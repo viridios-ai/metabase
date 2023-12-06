@@ -1,8 +1,8 @@
 import { t } from "ttag";
 import type { Dataset } from "metabase-types/api/dataset";
 
-export const canDownloadResults = (result: Dataset) =>
-  result.data?.download_perms !== "none";
+export const canDownloadResults = (result: Dataset) => false
+  //result.data?.download_perms !== "none";
 
 export const getDownloadWidgetMessageOverride = (result: Dataset) => {
   if (result.data?.download_perms === "limited") {

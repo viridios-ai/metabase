@@ -131,11 +131,12 @@ interface QueryDownloadWidgetOpts {
 }
 
 const canEditQuestion = (question: Question) => {
-  return (
+  return false
+  /*return (
     question.canWrite() &&
     question.query() != null &&
     question.query().isEditable()
-  );
+  );*/
 };
 
 const canDownloadResults = (result?: Dataset) => {
