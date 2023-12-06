@@ -186,7 +186,6 @@ function DashCardVisualization({
   ]);
 
   const renderActionButtons = useCallback(() => {
-    return null
     const mainSeries = series[0] as unknown as Dataset;
 
     const shouldShowDashCardMenu = DashCardMenu.shouldRender({

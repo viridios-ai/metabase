@@ -3,6 +3,7 @@ import { connect } from "react-redux";
 import { useAsyncFn } from "react-use";
 import { t } from "ttag";
 import { PLUGIN_FEATURE_LEVEL_PERMISSIONS } from "metabase/plugins";
+import { canSavePng } from "metabase/visualizations";
 import { Icon } from "metabase/core/components/Icon";
 import type { DownloadQueryResultsOpts } from "metabase/query_builder/actions";
 import { downloadQueryResults } from "metabase/query_builder/actions";
@@ -95,7 +96,7 @@ const DashCardMenu = ({
         icon: "pencil",
         action: () => onEditQuestion(question),
       },
-      canDownloadResults(result) && {
+      canDownloadResults(result, question) && {
         title: loading ? t`Downloading…` : t`Download results`,
         icon: "download",
         disabled: loading,
@@ -138,11 +139,12 @@ const canEditQuestion = (question: Question) => {
   );
 };
 
-const canDownloadResults = (result?: Dataset) => {
+const canDownloadResults = (result?: Dataset, question: Question) => {
   return (
     result != null &&
     !result.error &&
-    PLUGIN_FEATURE_LEVEL_PERMISSIONS.canDownloadResults(result)
+    PLUGIN_FEATURE_LEVEL_PERMISSIONS.canDownloadResults(result) &&
+    canSavePng(question.display())
   );
 };
 
@@ -163,7 +165,7 @@ DashCardMenu.shouldRender = ({
     !isPublic &&
     !isEditing &&
     !isXray &&
-    (canEditQuestion(question) || canDownloadResults(result))
+    (canEditQuestion(question) || canDownloadResults(result, question))
   );
 };
 
