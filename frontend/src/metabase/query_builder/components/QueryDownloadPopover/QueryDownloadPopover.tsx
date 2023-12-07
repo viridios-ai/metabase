@@ -90,7 +90,6 @@ const DownloadButton = ({ format, onDownload }: DownloadButtonProps) => {
       :
       <DownloadButtonRoot onClick={handleClick}>
         <DownloadButtonText>.{format}</DownloadButtonText>
-        <Tooltip className="tooltip">Feature not available for the moment</Tooltip>
       </DownloadButtonRoot>
       }
     </div>
