@@ -58,6 +58,7 @@ export const Tooltip = styled.div`
   border-radius: 6px;
   position: absolute;
   z-index: 100;
+  font-size: 12px;
 `;
 
 export const DownloadButtonText = styled.div`
