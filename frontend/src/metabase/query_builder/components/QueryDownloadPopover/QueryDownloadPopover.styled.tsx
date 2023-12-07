@@ -33,12 +33,14 @@ export const DownloadButtonRoot = styled.button`
     opacity: 0.7;
   }
 
-  :hover:not([disabled]) {
-    background-color: ${color("brand")};
-  }
+  ${(props: any) =>
+    !props.disabled &&
+      `&:hover:not([disabled]) {
+      background-color: ${color("brand")};
+  }`}
 
   ${(props: any) =>
-    props.disabled &&    
+    props.disabled &&
     `@media (max-width: 1024px) { 
       &:hover .tooltip {
         visibility: visible;
