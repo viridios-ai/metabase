@@ -3,7 +3,6 @@ import { connect } from "react-redux";
 import { useAsyncFn } from "react-use";
 import { t } from "ttag";
 import { PLUGIN_FEATURE_LEVEL_PERMISSIONS } from "metabase/plugins";
-import { canSavePng } from "metabase/visualizations";
 import { Icon } from "metabase/core/components/Icon";
 import type { DownloadQueryResultsOpts } from "metabase/query_builder/actions";
 import { downloadQueryResults } from "metabase/query_builder/actions";
@@ -96,7 +95,7 @@ const DashCardMenu = ({
         icon: "pencil",
         action: () => onEditQuestion(question),
       },
-      canDownloadResults(result, question) && {
+      canDownloadResults(result) && {
         title: loading ? t`Downloading…` : t`Download results`,
         icon: "download",
         disabled: loading,
@@ -139,12 +138,11 @@ const canEditQuestion = (question: Question) => {
   );
 };
 
-const canDownloadResults = (result?: Dataset, question: Question) => {
+const canDownloadResults = (result?: Dataset) => {
   return (
     result != null &&
     !result.error &&
-    PLUGIN_FEATURE_LEVEL_PERMISSIONS.canDownloadResults(result) &&
-    canSavePng(question.display())
+    PLUGIN_FEATURE_LEVEL_PERMISSIONS.canDownloadResults(result)
   );
 };
 
@@ -158,14 +156,14 @@ DashCardMenu.shouldRender = ({
 }: QueryDownloadWidgetOpts) => {
   const isInternalQuery = question.query() instanceof InternalQuery;
   if (isEmbed) {
-    return isEmbed && canDownloadResults(result, question);
+    return isEmbed;
   }
   return (
     !isInternalQuery &&
     !isPublic &&
     !isEditing &&
     !isXray &&
-    (canEditQuestion(question) || canDownloadResults(result, question))
+    (canEditQuestion(question) || canDownloadResults(result))
   );
 };
 

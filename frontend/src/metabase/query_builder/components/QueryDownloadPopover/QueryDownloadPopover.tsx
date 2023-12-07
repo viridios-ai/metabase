@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { connect } from "react-redux";
 import { t } from "ttag";
 import { PLUGIN_FEATURE_LEVEL_PERMISSIONS } from "metabase/plugins";
-import { exportFormatPng } from "metabase/lib/urls";
+import { exportFormats, exportFormatPng } from "metabase/lib/urls";
 import { canSavePng } from "metabase/visualizations";
 import type { Dataset } from "metabase-types/api";
 import type { State } from "metabase-types/store";
@@ -13,6 +13,7 @@ import {
   DownloadPopoverHeader,
   DownloadPopoverMessage,
   DownloadPopoverRoot,
+  Tooltip,
 } from "./QueryDownloadPopover.styled";
 
 interface OwnProps {
@@ -48,13 +49,13 @@ const QueryDownloadPopover = ({
   onDownload,
 }: QueryDownloadPopoverProps) => {
   const formats = canDownloadPng
-    ? [exportFormatPng]
-    : [];
+    ? [...exportFormats, exportFormatPng]
+    : exportFormats;
 
   return (
     <DownloadPopoverRoot isExpanded={hasTruncatedResults}>
       <DownloadPopoverHeader>
-        <h4>{t`Download full results`}</h4>
+        <h4>{t`Download options`}</h4>
       </DownloadPopoverHeader>
       {hasTruncatedResults && (
         <DownloadPopoverMessage>
@@ -80,9 +81,19 @@ const DownloadButton = ({ format, onDownload }: DownloadButtonProps) => {
   }, [format, onDownload]);
 
   return (
-    <DownloadButtonRoot onClick={handleClick}>
-      <DownloadButtonText>.{format}</DownloadButtonText>
-    </DownloadButtonRoot>
+    <div>
+      {format !== exportFormatPng ? 
+        <DownloadButtonRoot disable={true}>
+          <DownloadButtonText>.{format}</DownloadButtonText>
+          <Tooltip className="tooltip">Feature not available for the moment</Tooltip>
+        </DownloadButtonRoot>
+      :
+      <DownloadButtonRoot onClick={handleClick}>
+        <DownloadButtonText>.{format}</DownloadButtonText>
+        <Tooltip className="tooltip">Feature not available for the moment</Tooltip>
+      </DownloadButtonRoot>
+      }
+    </div>
   );
 };
 
