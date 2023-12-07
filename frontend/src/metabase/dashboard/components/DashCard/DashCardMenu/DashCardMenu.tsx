@@ -158,7 +158,7 @@ DashCardMenu.shouldRender = ({
 }: QueryDownloadWidgetOpts) => {
   const isInternalQuery = question.query() instanceof InternalQuery;
   if (isEmbed) {
-    return isEmbed;
+    return isEmbed && canDownloadResults(result, question);
   }
   return (
     !isInternalQuery &&
