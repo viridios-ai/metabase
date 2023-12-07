@@ -35,7 +35,7 @@ export const DownloadButtonRoot = styled.button`
 
   ${(props: any) =>
     !props.disabled &&
-      `&:hover:not([disabled]) {
+      `&:hover {
       background-color: ${color("brand")};
   }`}
 
