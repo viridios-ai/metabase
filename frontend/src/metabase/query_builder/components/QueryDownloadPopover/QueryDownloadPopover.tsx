@@ -57,12 +57,12 @@ const QueryDownloadPopover = ({
       <DownloadPopoverHeader>
         <h4>{t`Download options`}</h4>
       </DownloadPopoverHeader>
-      {hasTruncatedResults && (
+      {/*hasTruncatedResults && (
         <DownloadPopoverMessage>
           <div>{t`Your answer has a large number of rows so it could take a while to download.`}</div>
           <div>{limitedDownloadSizeText}</div>
         </DownloadPopoverMessage>
-      )}
+      )*/}
       {formats.map(format => (
         <DownloadButton key={format} format={format} onDownload={onDownload} />
       ))}
