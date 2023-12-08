@@ -50,7 +50,7 @@ export const DownloadButtonRoot = styled.button`
 
 export const Tooltip = styled.div`
   visibility: hidden;
-  width: 200px;
+  width: 250px;
   background-color: black;
   color: #fff;
   text-align: center;

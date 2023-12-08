@@ -85,7 +85,7 @@ const DownloadButton = ({ format, onDownload }: DownloadButtonProps) => {
       {format !== exportFormatPng ? 
         <DownloadButtonRoot disabled={true}>
           <DownloadButtonText>.{format}</DownloadButtonText>
-          <Tooltip className="tooltip">Feature not available for the moment</Tooltip>
+          <Tooltip className="tooltip">.{format} download not available at the moment</Tooltip>
         </DownloadButtonRoot>
       :
       <DownloadButtonRoot onClick={handleClick}>
