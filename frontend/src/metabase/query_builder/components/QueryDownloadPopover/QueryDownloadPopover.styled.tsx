@@ -41,7 +41,7 @@ export const DownloadButtonRoot = styled.button`
 
   ${(props: any) =>
     props.disabled &&
-    `@media (max-width: 1024px) { 
+    `@media (min-width: 512px) {
       &:hover .tooltip {
         visibility: visible;
       }
