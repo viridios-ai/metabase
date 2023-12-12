@@ -3,6 +3,7 @@ import { Component } from "react";
 import PropTypes from "prop-types";
 import _ from "underscore";
 
+import { Unauthorized } from "metabase/containers/ErrorPages";
 import { DashboardHeader } from "metabase/dashboard/components/DashboardHeader";
 import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
 import { FilterApplyButton } from "metabase/parameters/components/FilterApplyButton";
@@ -252,6 +253,20 @@ class Dashboard extends Component {
     const cardsContainerShouldHaveMarginTop =
       !shouldRenderParametersWidgetInViewMode &&
       (!isEditing || isEditingParameter);
+
+      inIframe = () => {
+        try {
+            console.log(window.self)
+            console.log(window.top)
+            return window.self !== window.top;
+        } catch (e) {
+            return true;
+        }
+      }
+    
+      if (inIframe !== true) {
+        return <Unauthorized />
+      }
 
     return (
       <DashboardLoadingAndErrorWrapper
