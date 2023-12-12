@@ -6,6 +6,7 @@ import _ from "underscore";
 import { useUnmount } from "react-use";
 import { t } from "ttag";
 
+import { Unauthorized } from "metabase/containers/ErrorPages";
 import { LeaveConfirmationModal } from "metabase/components/LeaveConfirmationModal";
 import title from "metabase/hoc/Title";
 import favicon from "metabase/hoc/Favicon";
@@ -183,6 +184,18 @@ const DashboardApp = props => {
     timer: DASHBOARD_SLOW_TIMEOUT,
     onTimeout,
   });
+
+  inIframe = () => {
+    try {
+        return window.self !== window.top;
+    } catch (e) {
+        return true;
+    }
+  }
+
+  if (inIframe === true) {
+    return <Unauthorized />
+  }
 
   return (
     <div className="shrink-below-content-size full-height">
