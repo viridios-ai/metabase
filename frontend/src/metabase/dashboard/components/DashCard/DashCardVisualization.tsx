@@ -6,6 +6,7 @@ import type { LocationDescriptor } from "history";
 
 import type { IconName, IconProps } from "metabase/core/components/Icon";
 
+import { Unauthorized } from "metabase/containers/ErrorPages";
 import Visualization from "metabase/visualizations/components/Visualization";
 import WithVizSettingsData from "metabase/dashboard/hoc/WithVizSettingsData";
 import { getVisualizationRaw } from "metabase/visualizations";
@@ -223,6 +224,20 @@ function DashCardVisualization({
     dashboard.id,
     parameterValuesBySlug,
   ]);
+
+  const inIframe = () => {
+    try {
+        console.log(window.self)
+        console.log(window.top)
+        return window.self !== window.top;
+    } catch (e) {
+        return true;
+    }
+  }
+
+  if (inIframe() !== true) {
+    return <Unauthorized />
+  }
 
   return (
     <WrappedVisualization
