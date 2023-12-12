@@ -4,7 +4,7 @@
 :root {
   --color-admin-navbar: #7172ad;
   --color-white: #ffffff;
-  --color-black: #2e353b;
+  --color-black: #4a4a4a;
   --color-success: #84bb4c;
   --color-error: #ed6e6e;
   --color-warning: #f9cf48;
@@ -12,7 +12,7 @@
   --color-text-medium: #696e7b;
   --color-text-light: #949aab;
   --color-text-white: #ffffff;
-  --color-bg-black: #2e353b;
+  --color-bg-black: #4a4a4a;
   --color-bg-dark: #93a1ab;
   --color-bg-medium: #edf2f5;
   --color-bg-light: #f9fbfc;
