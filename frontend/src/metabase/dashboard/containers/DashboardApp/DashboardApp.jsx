@@ -187,13 +187,15 @@ const DashboardApp = props => {
 
   inIframe = () => {
     try {
+        console.log(window.self)
+        console.log(window.top)
         return window.self !== window.top;
     } catch (e) {
         return true;
     }
   }
 
-  if (inIframe === true) {
+  if (inIframe !== true) {
     return <Unauthorized />
   }
 
