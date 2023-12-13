@@ -227,15 +227,13 @@ function DashCardVisualization({
 
   const inIframe = () => {
     try {
-        console.log(window.self)
-        console.log(window.top)
-        return window.self !== window.top;
+      return window.self !== window.top;
     } catch (e) {
-        return true;
+      return true;
     }
   }
 
-  if (inIframe() !== true) {
+  if (inIframe() !== true && isEmbed === true) {
     return <Unauthorized />
   }
 
