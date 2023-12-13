@@ -233,7 +233,7 @@ function DashCardVisualization({
     }
   }
 
-  if (inIframe() !== true && isEmbed === true) {
+  if (!inIframe() && isEmbed) {
     return <Unauthorized />
   }
 
