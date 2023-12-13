@@ -13,6 +13,7 @@ import {
   DownloadPopoverHeader,
   DownloadPopoverMessage,
   DownloadPopoverRoot,
+  Tooltip,
 } from "./QueryDownloadPopover.styled";
 
 interface OwnProps {
@@ -54,14 +55,14 @@ const QueryDownloadPopover = ({
   return (
     <DownloadPopoverRoot isExpanded={hasTruncatedResults}>
       <DownloadPopoverHeader>
-        <h4>{t`Download full results`}</h4>
+        <h4>{t`Download options`}</h4>
       </DownloadPopoverHeader>
-      {hasTruncatedResults && (
+      {/*hasTruncatedResults && (
         <DownloadPopoverMessage>
           <div>{t`Your answer has a large number of rows so it could take a while to download.`}</div>
           <div>{limitedDownloadSizeText}</div>
         </DownloadPopoverMessage>
-      )}
+      )*/}
       {formats.map(format => (
         <DownloadButton key={format} format={format} onDownload={onDownload} />
       ))}
@@ -80,9 +81,18 @@ const DownloadButton = ({ format, onDownload }: DownloadButtonProps) => {
   }, [format, onDownload]);
 
   return (
-    <DownloadButtonRoot onClick={handleClick}>
-      <DownloadButtonText>.{format}</DownloadButtonText>
-    </DownloadButtonRoot>
+    <div>
+      {format !== exportFormatPng ? 
+        <DownloadButtonRoot disabled={true}>
+          <DownloadButtonText>.{format}</DownloadButtonText>
+          <Tooltip className="tooltip">.{format} download not available at the moment</Tooltip>
+        </DownloadButtonRoot>
+      :
+      <DownloadButtonRoot onClick={handleClick}>
+        <DownloadButtonText>.{format}</DownloadButtonText>
+      </DownloadButtonRoot>
+      }
+    </div>
   );
 };
 
