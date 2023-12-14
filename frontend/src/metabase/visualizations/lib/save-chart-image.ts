@@ -24,6 +24,7 @@ export const saveChartImage = async (selector: string, fileName: string) => {
 
   const canvas = await html2canvas(node, {
     useCORS: true,
+    backgroundColor: "rgba(0,0,0,0)"
   });
 
   node.classList.remove(SAVING_DOM_IMAGE_CLASS);
