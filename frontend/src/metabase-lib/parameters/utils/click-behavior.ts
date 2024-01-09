@@ -25,7 +25,7 @@ import {
   dimensionFilterForParameter,
   variableFilterForParameter,
 } from "metabase-lib/parameters/utils/filters";
-import type { Dimension as DimensionType } from "metabase-lib/types";
+import type { ClickObjectDimension as DimensionType } from "metabase-lib/types";
 import { isa, isDate } from "metabase-lib/types/utils/isa";
 import { TYPE } from "metabase-lib/types/constants";
 import TemplateTagVariable from "metabase-lib/variables/TemplateTagVariable";
@@ -131,7 +131,7 @@ function notRelativeDateOrRange({ type }: Parameter) {
 }
 
 export function getTargetsForQuestion(question: Question): Target[] {
-  const query = question.query();
+  const query = question.legacyQuery();
   return [...query.dimensionOptions().all(), ...query.variables()].map(o => {
     let id, target: ClickBehaviorTarget;
     if (o instanceof TemplateTagVariable || o instanceof TemplateTagDimension) {

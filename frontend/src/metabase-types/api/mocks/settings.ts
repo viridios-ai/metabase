@@ -1,3 +1,4 @@
+import type { EnterpriseSettings } from "metabase-enterprise/settings/types";
 import type {
   Engine,
   EngineField,
@@ -130,9 +131,12 @@ export const createMockSettingDefinition = (
   ...opts,
 });
 
-export const createMockSettings = (opts?: Partial<Settings>): Settings => ({
+export const createMockSettings = (
+  opts?: Partial<Settings | EnterpriseSettings>,
+): EnterpriseSettings => ({
   "admin-email": "admin@metabase.test",
   "anon-tracking-enabled": false,
+  "application-colors": {},
   "application-font": "Lato",
   "application-font-files": [],
   "application-name": "Metabase",
@@ -143,6 +147,8 @@ export const createMockSettings = (opts?: Partial<Settings>): Settings => ({
   "custom-formatting": {},
   "custom-homepage": false,
   "custom-homepage-dashboard": null,
+  "help-link": "metabase",
+  "help-link-custom-destination": "",
   "deprecation-notice-version": undefined,
   "email-configured?": false,
   "embedding-app-origin": "",

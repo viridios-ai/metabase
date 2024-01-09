@@ -8,7 +8,7 @@ import type { IconName, IconProps } from "metabase/core/components/Icon";
 
 import { Unauthorized } from "metabase/containers/ErrorPages";
 import Visualization from "metabase/visualizations/components/Visualization";
-import WithVizSettingsData from "metabase/dashboard/hoc/WithVizSettingsData";
+import { WithVizSettingsData } from "metabase/dashboard/hoc/WithVizSettingsData";
 import { getVisualizationRaw } from "metabase/visualizations";
 
 import {
@@ -37,9 +37,9 @@ import type {
   CardSlownessStatus,
   DashCardOnChangeCardAndRunHandler,
 } from "./types";
-import ClickBehaviorSidebarOverlay from "./ClickBehaviorSidebarOverlay";
-import DashCardMenu from "./DashCardMenu";
-import DashCardParameterMapper from "./DashCardParameterMapper";
+import { ClickBehaviorSidebarOverlay } from "./ClickBehaviorSidebarOverlay/ClickBehaviorSidebarOverlay";
+import { DashCardMenuConnected } from "./DashCardMenu/DashCardMenu";
+import { DashCardParameterMapper } from "./DashCardParameterMapper/DashCardParameterMapper";
 import {
   VirtualDashCardOverlayRoot,
   VirtualDashCardOverlayText,
@@ -97,7 +97,7 @@ const WrappedVisualization = WithVizSettingsData(
   connect(null, mapDispatchToProps)(Visualization),
 );
 
-function DashCardVisualization({
+export function DashCardVisualization({
   dashcard,
   dashboard,
   series,
@@ -189,7 +189,7 @@ function DashCardVisualization({
   const renderActionButtons = useCallback(() => {
     const mainSeries = series[0] as unknown as Dataset;
 
-    const shouldShowDashCardMenu = DashCardMenu.shouldRender({
+    const shouldShowDashCardMenu = DashCardMenuConnected.shouldRender({
       question,
       result: mainSeries,
       isXray,
@@ -203,7 +203,7 @@ function DashCardVisualization({
     }
 
     return (
-      <DashCardMenu
+      <DashCardMenuConnected
         question={question}
         result={mainSeries}
         dashcardId={dashcard.id}
@@ -278,6 +278,3 @@ function DashCardVisualization({
     />
   );
 }
-
-// eslint-disable-next-line import/no-default-export -- deprecated usage
-export default DashCardVisualization;

@@ -18,6 +18,7 @@
    [metabase.public-settings :as public-settings]
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.util :as qp.util]
+   [metabase.upload :as upload]
    [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.i18n :refer [trs]]
    [metabase.util.log :as log])
@@ -362,8 +363,25 @@
            (into
             #{}
             (sql-jdbc.describe-table/describe-table-fields-xf driver table)
-            (sql-jdbc.describe-table/fallback-fields-metadata-from-select-query driver conn schema table-name))))))
+            (sql-jdbc.describe-table/fallback-fields-metadata-from-select-query driver conn db-name-or-nil schema table-name))))))
 
 (defmethod sql-jdbc.execute/set-parameter [:redshift java.time.ZonedDateTime]
   [driver ps i t]
   (sql-jdbc.execute/set-parameter driver ps i (t/sql-timestamp (t/with-zone-same-instant t (t/zone-id "UTC")))))
+
+(defmethod driver/upload-type->database-type :redshift
+  [_driver upload-type]
+  (case upload-type
+    ::upload/varchar-255              [[:varchar 255]]
+    ::upload/text                     [:text]
+    ::upload/int                      [:bigint]
+    ::upload/auto-incrementing-int-pk [:bigint [:identity 0 1]]
+    ::upload/float                    [:float]
+    ::upload/boolean                  [:boolean]
+    ::upload/date                     [:date]
+    ::upload/datetime                 [:timestamp]
+    ::upload/offset-datetime          [:timestamp-with-time-zone]))
+
+(defmethod driver/insert-into! :redshift
+  [driver db-id table-name column-names values]
+  ((get-method driver/insert-into! :sql-jdbc) driver db-id table-name column-names values))

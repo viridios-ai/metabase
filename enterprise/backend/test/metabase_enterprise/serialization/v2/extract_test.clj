@@ -576,6 +576,32 @@
                       (serdes/extract-all "Dashboard")
                       (by-model "Dashboard")))))))))
 
+(deftest dashboard-card-series-test
+  (mt/with-empty-h2-app-db
+    (ts/with-temp-dpc
+      [:model/Collection {coll-id :id, coll-eid :entity_id} {:name "Some Collection"}
+       :model/Card {c1-id :id, c1-eid :entity_id} {:name "Some Question", :collection_id coll-id}
+       :model/Card {c2-id :id, c2-eid :entity_id} {:name "Series Question A", :collection_id coll-id}
+       :model/Card {c3-id :id, c3-eid :entity_id} {:name "Series Question B", :collection_id coll-id}
+       :model/Dashboard {dash-id :id, dash-eid :entity_id} {:name "Shared Dashboard", :collection_id coll-id}
+       :model/DashboardCard {dc1-id :id, dc1-eid :entity_id} {:card_id c1-id, :dashboard_id dash-id}
+       :model/DashboardCard {dc2-eid :entity_id}             {:card_id c1-id, :dashboard_id dash-id}
+       :model/DashboardCardSeries _ {:card_id c3-id, :dashboardcard_id dc1-id, :position 1}
+       :model/DashboardCardSeries _ {:card_id c2-id, :dashboardcard_id dc1-id, :position 0}]
+      (testing "Inlined dashcards include their series' card entity IDs"
+        (let [ser (serdes/extract-one "Dashboard" {} (t2/select-one Dashboard :id dash-id))]
+          (is (=? {:entity_id dash-eid
+                   :dashcards [{:entity_id dc1-eid, :series (mt/exactly=? [{:card_id c2-eid} {:card_id c3-eid}])}
+                               {:entity_id dc2-eid, :series []}]}
+                  ser))
+
+          (testing "and depend on all referenced cards, including cards from dashboard cards' series"
+            (is (= #{[{:model "Card"       :id c1-eid}]
+                     [{:model "Card"       :id c2-eid}]
+                     [{:model "Card"       :id c3-eid}]
+                     [{:model "Collection" :id coll-eid}]}
+                   (set (serdes/dependencies ser))))))))))
+
 (deftest dimensions-test
   (mt/with-empty-h2-app-db
     (ts/with-temp-dpc [;; Simple case: a singular field, no human-readable field.
@@ -1033,8 +1059,8 @@
                  (by-model "FieldValues" (extract/extract {})))))
         (testing "with :include-field-values true"
           (let [models (->> {:include-field-values true} extract/extract (map (comp :model last :serdes/meta)))]
-            ;; why 6?
-            (is (= 6 (count (filter #{"FieldValues"} models))))))))))
+            ;; why 14?
+            (is (= 14 (count (filter #{"FieldValues"} models))))))))))
 
 (deftest pulses-test
   (mt/with-empty-h2-app-db
@@ -1570,12 +1596,15 @@
                      set))))
 
       (testing "selecting a collection gets all its contents"
-        (let [grandchild-paths  #{[{:model "Collection"    :id coll3-eid :label "grandchild_collection"}]
+        (let [grandchild-paths  #{[{:model "Collection"    :id coll1-eid :label "some_collection"}]
+                                  [{:model "Collection"    :id coll2-eid :label "nested_collection"}]
+                                  [{:model "Collection"    :id coll3-eid :label "grandchild_collection"}]
                                   [{:model "Dashboard"     :id dash3-eid :label "dashboard_3"}]
                                   [{:model "Card"          :id c3-1-eid  :label "question_3_1"}]
                                   [{:model "Card"          :id c3-2-eid  :label "question_3_2"}]
                                   [{:model "Card"          :id c3-3-eid  :label "question_3_3"}]}
-              middle-paths      #{[{:model "Collection"    :id coll2-eid :label "nested_collection"}]
+              middle-paths      #{[{:model "Collection"    :id coll1-eid :label "some_collection"}]
+                                  [{:model "Collection"    :id coll2-eid :label "nested_collection"}]
                                   [{:model "Dashboard"     :id dash2-eid :label "dashboard_2"}]
                                   [{:model "Card"          :id c2-1-eid  :label "question_2_1"}]
                                   [{:model "Card"          :id c2-2-eid  :label "question_2_2"}]
@@ -1643,7 +1672,7 @@
                                                      :collection_id coll2-id
                                                      :dataset_query {:query {:source-table (str "card__" card1-id)
                                                                              :aggregation  [[:count]]}}}]
-      (testing "Complain about card to available for exporting"
+      (testing "Complain about card not available for exporting"
         (is (some #(str/starts-with? % "Failed to export Dashboard")
                   (into #{}
                         (map (fn [[_log-level _error message]] message))
@@ -1652,7 +1681,7 @@
                                             :no-settings   true
                                             :no-data-model true}))))))
 
-      (testing "Complain about card depending on a card"
+      (testing "Complain about card depending on an outside card"
         (is (some #(str/starts-with? % "Failed to export Cards")
                   (into #{}
                         (map (fn [[_log-level _error message]] message))
@@ -1660,3 +1689,25 @@
                           (extract/extract {:targets       [["Collection" coll2-id]]
                                             :no-settings   true
                                             :no-data-model true})))))))))
+
+(deftest recursive-colls-test
+  (mt/with-empty-h2-app-db
+    (mt/with-temp [Collection {parent-id  :id
+                               parent-eid :entity_id} {:name "Top-Level Collection"}
+                   Collection {middle-id  :id
+                               middle-eid :entity_id} {:name     "Nested Collection"
+                                                       :location (format "/%s/" parent-id)}
+                   Collection {nested-id  :id
+                               nested-eid :entity_id} {:name     "Nested Collection"
+                                                       :location (format "/%s/%s/" parent-id middle-id)}
+                   Card       _                       {:name          "Card To Skip"
+                                                       :collection_id parent-id}
+                   Card       {ncard-eid :entity_id}  {:name          "Card To Export"
+                                                       :collection_id nested-id}]
+      (let [ser (extract/extract {:targets       [["Collection" nested-id]]
+                                  :no-settings   true
+                                  :no-data-model true})]
+        (is (= #{parent-eid middle-eid nested-eid}
+               (by-model "Collection" ser)))
+        (is (= #{ncard-eid}
+               (by-model "Card" ser)))))))

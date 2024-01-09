@@ -39,7 +39,7 @@
    [metabase.util.malli :as mu])
   (:import
    (java.io StringReader)
-   (java.sql ResultSet ResultSetMetaData Time Types)
+   (java.sql Connection ResultSet ResultSetMetaData Time Types)
    (java.time LocalDateTime OffsetDateTime OffsetTime)
    (java.util Date UUID)
    (org.postgresql.copy CopyManager)
@@ -54,31 +54,30 @@
 
 (driver/register! :postgres, :parent :sql-jdbc)
 
+(defmethod driver/display-name :postgres [_] "PostgreSQL")
+
+;; Features that are supported by Postgres and all of its child drivers like Redshift
 (doseq [[feature supported?] {:convert-timezone         true
                               :datetime-diff            true
                               :now                      true
                               :persist-models           true
                               :schemas                  true
-                              :connection-impersonation true}]
+                              :connection-impersonation true
+                              :uploads                  true}]
   (defmethod driver/database-supports? [:postgres feature] [_driver _feature _db] supported?))
 
 (defmethod driver/database-supports? [:postgres :nested-field-columns]
   [_driver _feat db]
   (driver.common/json-unfolding-default db))
 
-;;; +----------------------------------------------------------------------------------------------------------------+
-;;; |                                             metabase.driver impls                                              |
-;;; +----------------------------------------------------------------------------------------------------------------+
-
-(defmethod driver/display-name :postgres [_] "PostgreSQL")
-
+;; Features that are supported by postgres only
 (doseq [feature [:actions
                  :actions/custom
                  :table-privileges
-                 :uploads]]
+                 :uploads
+                 :index-info]]
   (defmethod driver/database-supports? [:postgres feature]
     [driver _feat _db]
-    ;; only supported for Postgres for right now. Not supported for child drivers like Redshift or whatever.
     (= driver :postgres)))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -216,10 +215,6 @@
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                           metabase.driver.sql impls                                            |
 ;;; +----------------------------------------------------------------------------------------------------------------+
-
-(defmethod sql.qp/honey-sql-version :postgres
-  [_driver]
-  2)
 
 (defn- ->timestamp [honeysql-form]
   (h2x/cast-unless-type-in "timestamp" #{"timestamp" "timestamptz" "date"} honeysql-form))
@@ -784,9 +779,7 @@
     ::upload/varchar-255              [[:varchar 255]]
     ::upload/text                     [:text]
     ::upload/int                      [:bigint]
-    ::upload/int-pk                   [:bigint :primary-key]
-    ::upload/auto-incrementing-int-pk [:bigserial]
-    ::upload/string-pk                [[:varchar 255] :primary-key]
+    ::upload/auto-incrementing-int-pk [:bigserial :primary-key]
     ::upload/float                    [:float]
     ::upload/boolean                  [:boolean]
     ::upload/date                     [:date]
@@ -833,24 +826,23 @@
 
 (defmethod driver/insert-into! :postgres
   [driver db-id table-name column-names values]
-  (sql-jdbc.execute/do-with-connection-with-options
-   driver
-   db-id
-   {:write? true}
-   (fn [^java.sql.Connection conn]
-     (let [copy-manager (CopyManager. (.unwrap conn PgConnection))
-           [sql & _]    (sql/format {::copy       (keyword table-name)
-                                     :columns     (map keyword column-names)
-                                     ::from-stdin "''"}
-                                    :quoted true
-                                    :dialect (sql.qp/quote-style driver))]
-       ;; There's nothing magic about 100, but it felt good in testing. There could well be a better number.
-       (doseq [slice-of-values (partition-all 100 values)]
-         (let [tsvs (->> slice-of-values
-                         (map row->tsv)
-                         (str/join "\n")
-                         (StringReader.))]
-           (.copyIn copy-manager ^String sql tsvs)))))))
+  (jdbc/with-db-transaction [conn (sql-jdbc.conn/db->pooled-connection-spec db-id)]
+    (let [copy-manager (CopyManager. (.unwrap ^Connection (:connection conn) PgConnection))
+          [sql & _]    (sql/format {::copy       (keyword table-name)
+                                    :columns     (map keyword column-names)
+                                    ::from-stdin "''"}
+                                   :quoted true
+                                   :dialect (sql.qp/quote-style driver))
+          ;; On Postgres with a large file, 100 (3.76m) was significantly faster than 50 (4.03m) and 25 (4.27m). 1,000 was a
+          ;; little faster but not by much (3.63m), and 10,000 threw an error:
+          ;;     PreparedStatement can have at most 65,535 parameters
+          chunks (partition-all (or driver/*insert-chunk-rows* 1000) values)]
+      (doseq [chunk chunks]
+        (let [tsvs (->> chunk
+                        (map row->tsv)
+                        (str/join "\n")
+                        (StringReader.))]
+          (.copyIn copy-manager ^String sql tsvs))))))
 
 (defmethod driver/current-user-table-privileges :postgres
   [_driver database]

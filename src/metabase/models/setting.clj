@@ -188,7 +188,8 @@
      humanization-strategy
      landing-page
      loading-message
-     max-results-bare-rows
+     aggregated-query-row-limit
+     unaggregated-query-row-limit
      native-query-autocomplete-match-style
      persisted-models-enabled
      report-timezone
@@ -204,7 +205,10 @@
      site-name
      source-address-header
      start-of-week
-     subscription-allowed-domains})
+     subscription-allowed-domains
+     uploads-enabled
+     uploads-database-id
+     uploads-schema-name})
 
 (defmethod serdes/extract-all "Setting" [_model _opts]
   (for [{:keys [key value]} (admin-writable-site-wide-settings
@@ -616,6 +620,10 @@
   [_setting-type setting-definition-or-name]
   (get-raw-value setting-definition-or-name integer? #(Long/parseLong ^String %)))
 
+(defmethod get-value-of-type :positive-integer
+  [_setting-type setting-definition-or-name]
+  (get-raw-value setting-definition-or-name pos-int? #(Long/parseLong ^String %)))
+
 (defmethod get-value-of-type :double
   [_setting-type setting-definition-or-name]
   (get-raw-value setting-definition-or-name double? #(Double/parseDouble ^String %)))
@@ -779,6 +787,16 @@
      (assert (or (integer? new-value)
                  (and (string? new-value)
                       (re-matches #"^-?\d+$" new-value))))
+     (str new-value))))
+
+(defmethod set-value-of-type! :positive-integer
+  [_setting-type setting-definition-or-name new-value]
+  (set-value-of-type!
+   :string setting-definition-or-name
+   (when new-value
+     (assert (or (pos-int? new-value)
+                 (and (string? new-value)
+                      (re-matches #"^[1-9]\d*$" new-value))))
      (str new-value))))
 
 (defmethod set-value-of-type! :double

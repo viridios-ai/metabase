@@ -87,55 +87,59 @@ describe("scenarios > visualizations > maps", () => {
     });
   });
 
-  it("should not assign the full name of the state as the filter value on a drill-through (metabase#14650)", () => {
-    cy.intercept("/app/assets/geojson/**").as("geojson");
-    visitQuestionAdhoc({
-      dataset_query: {
-        database: SAMPLE_DB_ID,
-        query: {
-          "source-table": PEOPLE_ID,
-          aggregation: [["count"]],
-          breakout: [["field", PEOPLE.STATE, null]],
+  it(
+    "should not assign the full name of the state as the filter value on a drill-through (metabase#14650)",
+    { tags: "@flaky" },
+    () => {
+      cy.intercept("/app/assets/geojson/**").as("geojson");
+      visitQuestionAdhoc({
+        dataset_query: {
+          database: SAMPLE_DB_ID,
+          query: {
+            "source-table": PEOPLE_ID,
+            aggregation: [["count"]],
+            breakout: [["field", PEOPLE.STATE, null]],
+          },
+          type: "query",
         },
-        type: "query",
-      },
-      display: "map",
-      visualization_settings: {
-        "map.type": "region",
-        "map.region": "us_states",
-      },
-    });
+        display: "map",
+        visualization_settings: {
+          "map.type": "region",
+          "map.region": "us_states",
+        },
+      });
 
-    cy.wait("@geojson");
+      cy.wait("@geojson");
 
-    cy.get(".CardVisualization svg path")
-      .should("be.visible")
-      .eq(22)
-      .as("texas");
+      cy.get(".CardVisualization svg path")
+        .should("be.visible")
+        .eq(22)
+        .as("texas");
 
-    // hover to see the tooltip
-    cy.get("@texas").trigger("mousemove");
+      // hover to see the tooltip
+      cy.get("@texas").trigger("mousemove");
 
-    // check tooltip content
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("State:"); // column name key
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("Texas"); // feature name as value
+      // check tooltip content
+      // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
+      cy.findByText("State:"); // column name key
+      // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
+      cy.findByText("Texas"); // feature name as value
 
-    // open drill-through menu and drill within it
-    cy.get("@texas").click();
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText(/See these People/i).click();
+      // open drill-through menu and drill within it
+      cy.get("@texas").click();
+      // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
+      cy.findByText(/See these People/i).click();
 
-    cy.log("Reported as a regression since v0.37.0");
-    cy.wait("@dataset").then(xhr => {
-      expect(xhr.request.body.query.filter).not.to.contain("Texas");
-    });
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("State is TX");
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("171 Olive Oyle Lane"); // Address in the first row
-  });
+      cy.log("Reported as a regression since v0.37.0");
+      cy.wait("@dataset").then(xhr => {
+        expect(xhr.request.body.query.filter).not.to.contain("Texas");
+      });
+      // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
+      cy.findByText("State is TX");
+      // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
+      cy.findByText("171 Olive Oyle Lane"); // Address in the first row
+    },
+  );
 
   it("should display a tooltip for a grid map without a metric column (metabase#17940)", () => {
     visitQuestionAdhoc({
@@ -219,5 +223,41 @@ describe("scenarios > visualizations > maps", () => {
       "data-is-sensible",
       "true",
     );
+  });
+
+  it("should apply brush filters by dragging map", () => {
+    cy.viewport(1280, 800);
+
+    visitQuestionAdhoc({
+      dataset_query: {
+        type: "query",
+        database: SAMPLE_DB_ID,
+        query: {
+          "source-table": PEOPLE_ID,
+        },
+      },
+      display: "map",
+      visualization_settings: {
+        "map.region": "us_states",
+        "map.type": "pin",
+        "map.latitude_column": "LATITUDE",
+        "map.longitude_column": "LONGITUDE",
+      },
+    });
+
+    cy.get(".CardVisualization").realHover();
+    cy.findByTestId("visualization-root")
+      .findByText("Draw box to filter")
+      .click();
+
+    cy.findByTestId("visualization-root")
+      .trigger("mousedown", 500, 500)
+      .trigger("mousemove", 600, 600)
+      .trigger("mouseup", 600, 600);
+
+    cy.wait("@dataset");
+
+    // selecting area at the map provides different filter values, so the simplified assertion is used
+    cy.findByTestId("filter-pill").should("have.length", 1);
   });
 });

@@ -16,6 +16,7 @@
    [metabase.lib.convert :as lib.convert]
    [metabase.lib.core :as lib.core]
    [metabase.lib.equality :as lib.equality]
+   [metabase.lib.field :as lib.field]
    [metabase.lib.join :as lib.join]
    [metabase.lib.js.metadata :as js.metadata]
    [metabase.lib.metadata :as lib.metadata]
@@ -25,6 +26,7 @@
    [metabase.lib.stage :as lib.stage]
    [metabase.lib.util :as lib.util]
    [metabase.mbql.js :as mbql.js]
+   [metabase.mbql.normalize :as mbql.normalize]
    [metabase.shared.util.time :as shared.ut]
    [metabase.util :as u]
    [metabase.util.log :as log]
@@ -80,10 +82,13 @@
 
 (defn ^:export query
   "Coerce a plain map `query` to an actual query object that you can use with MLv2."
-  [database-id metadata query-map]
-  (let [query-map (lib.convert/js-legacy-query->pMBQL query-map)]
-    (log/debugf "query map: %s" (pr-str query-map))
-    (lib.core/query (metadataProvider database-id metadata) query-map)))
+  ([metadata-provider table-or-card-metadata]
+   (lib.core/query metadata-provider table-or-card-metadata))
+
+  ([database-id metadata query-map]
+   (let [query-map (lib.convert/js-legacy-query->pMBQL query-map)]
+     (log/debugf "query map: %s" (pr-str query-map))
+     (lib.core/query (metadataProvider database-id metadata) query-map))))
 
 (defn- fix-namespaced-values
   "This converts namespaced keywords to strings as `\"foo/bar\"`.
@@ -110,9 +115,14 @@
   (lib.core/append-stage a-query))
 
 (defn ^:export drop-stage
-  "Drops the final stage in the pipeline"
+  "Drops the final stage in the pipeline, will no-op if it is the only stage"
   [a-query]
   (lib.core/drop-stage a-query))
+
+(defn ^:export drop-stage-if-empty
+  "Drops the final stage in the pipeline IF the stage is empty of clauses, otherwise no-op"
+  [a-query]
+  (lib.core/drop-stage-if-empty a-query))
 
 (defn ^:export orderable-columns
   "Return a sequence of Column metadatas about the columns you can add order bys for in a given stage of `a-query.` To
@@ -204,17 +214,6 @@
   (lib.cache/side-channel-cache
     (keyword "display-info-outer" (str "stage-" stage-number)) x
     #(display-info* a-query stage-number %)))
-
-(defn ^:export field-id
-  "Find the field id for something or nil."
-  [field-metadata]
-  (lib.core/field-id field-metadata))
-
-(defn ^:export legacy-card-or-table-id
-  "Find the legacy card id or table id for a given ColumnMetadata or nil.
-   Returns a either `\"card__<id>\"` or integer table id."
-  [field-metadata]
-  (lib.core/legacy-card-or-table-id field-metadata))
 
 (defn ^:export order-by-clause
   "Create an order-by clause independently of a query, e.g. for `replace` or whatever."
@@ -462,7 +461,11 @@
 (defn ^:export expression-clause
   "Returns a standalone clause for an `operator`, `options`, and arguments."
   [an-operator args options]
-  (lib.core/expression-clause (keyword an-operator) args (js->clj options :keywordize-keys true)))
+  (-> (lib.core/expression-clause
+        (keyword an-operator)
+        args
+        (js->clj options :keywordize-keys true))
+      (lib.core/normalize)))
 
 (defn ^:export expression-parts
   "Returns the parts (operator, args, and optionally, options) of `expression-clause`."
@@ -505,9 +508,9 @@
 
 (defn ^:export find-filterable-column-for-legacy-ref
   "Given a legacy `:field` reference, return the filterable [[ColumnWithOperators]] that best fits it."
-  [a-query stage-number legacy-ref]
+  [a-query stage-number a-legacy-ref]
   ;; [[lib.convert/legacy-ref->pMBQL]] will handle JS -> Clj conversion as needed
-  (lib.core/find-filterable-column-for-legacy-ref a-query stage-number legacy-ref))
+  (lib.core/find-filterable-column-for-legacy-ref a-query stage-number a-legacy-ref))
 
 (defn ^:export fields
   "Get the current `:fields` in a query. Unlike the lib core version, this will return an empty sequence if `:fields` is
@@ -551,18 +554,11 @@
   [a-query stage-number column]
   (lib.core/remove-field a-query stage-number column))
 
-(defn ^:export find-visible-column-for-legacy-ref
-  "Like [[find-visible-column-for-ref]], but takes a legacy MBQL reference instead of a pMBQL one. This is currently
-  only meant for use with `:field` clauses."
-  [a-query stage-number legacy-ref]
-  ;; [[lib.convert/legacy-ref->pMBQL]] will handle JS -> Clj conversion as needed
-  (lib.core/find-visible-column-for-legacy-ref a-query stage-number legacy-ref))
-
 (defn ^:export find-column-for-legacy-ref
   "Given a sequence of `columns` (column metadatas), return the one that is the best fit for `legacy-ref`."
-  [a-query stage-number legacy-ref columns]
+  [a-query stage-number a-legacy-ref columns]
   ;; [[lib.convert/legacy-ref->pMBQL]] will handle JS -> Clj conversion as needed
-  (lib.core/find-column-for-legacy-ref a-query stage-number legacy-ref columns))
+  (lib.core/find-column-for-legacy-ref a-query stage-number a-legacy-ref columns))
 
 ;; TODO: Added as an expedient to fix metabase/metabase#32373. Due to the interaction with viz-settings, this issue
 ;; was difficult to fix entirely within MLv2. Once viz-settings are ported, this function should not be needed, and the
@@ -585,19 +581,27 @@
          (map #(assoc % :selected? true))
          to-array)))
 
-(defn ^:export legacy-field-ref
-  "Given a column metadata from eg. [[fieldable-columns]], return it as a legacy JSON field ref."
+(defn- normalize-legacy-ref
+  [a-ref]
+  (if (#{:metric :segment} (first a-ref))
+    (subvec a-ref 0 2)
+    (update a-ref 2 update-vals #(if (qualified-keyword? %)
+                                   (u/qualified-name %)
+                                   %))))
+
+(defn ^:export legacy-ref
+  "Given a column, metric or segment metadata from eg. [[fieldable-columns]] or [[available-segments]],
+  return it as a legacy JSON field ref.
+  For compatibility reasons, segment and metric references are always returned without options."
   [column]
   (-> column
       lib.core/ref
       lib.convert/->legacy-MBQL
-      (update 2 update-vals #(if (qualified-keyword? %)
-                               (u/qualified-name %)
-                               %))
+      normalize-legacy-ref
       clj->js))
 
-(defn- legacy-ref->pMBQL [legacy-ref]
-  (-> legacy-ref
+(defn- legacy-ref->pMBQL [a-legacy-ref]
+  (-> a-legacy-ref
       (js->clj :keywordize-keys true)
       (update 0 keyword)
       lib.convert/->pMBQL))
@@ -627,6 +631,13 @@
           needles  (map legacy-ref->pMBQL legacy-refs)]
       #_{:clj-kondo/ignore [:discouraged-var]}
       (to-array (lib.equality/find-column-indexes-for-refs a-query stage-number needles haystack)))))
+
+(defn ^:export source-table-or-card-id
+  "Returns the ID of the source table (as a number) or the ID of the source card (as a string prefixed
+  with \"card__\") of `a-query`. If `a-query` has none of these, nil is returned."
+  [a-query]
+  (or (lib.util/source-table-id a-query)
+      (some->> (lib.util/source-card-id a-query) (str "card__"))))
 
 (defn ^:export join-strategy
   "Get the strategy (type) of a given join as an opaque JoinStrategy object."
@@ -695,13 +706,10 @@
   [a-query stage-number expression-name an-expression-clause]
   (lib.core/expression a-query stage-number expression-name an-expression-clause))
 
-(defn ^:export expression-name
-  "Return the name of `an-expression-clause`."
-  [an-expression-clause]
-  (lib.core/expression-name an-expression-clause))
-
 (defn ^:export with-expression-name
-  "Return an new expressions clause like `an-expression-clause` but with name `new-name`."
+  "Return a new expression clause like `an-expression-clause` but with name `new-name`.
+  For expressions from the :expressions clause of a pMBQL query this sets the :lib/expression-name option,
+  for other expressions (for example named aggregation expressions) the :display-name option is set."
   [an-expression-clause new-name]
   (lib.core/with-expression-name an-expression-clause new-name))
 
@@ -963,15 +971,19 @@
 
 (defn ^:export available-drill-thrus
   "Return an array (possibly empty) of drill-thrus given:
-  - Required column
+  - Nullable column
   - Nullable value
   - Nullable data row (the array of `{col, value}` pairs from `clicked.data`)
-  - Nullable dimensions list (`{column, value}` pairs from `clicked.dimensions`)"
+  - Nullable dimensions list (`{column, value}` pairs from `clicked.dimensions`)
+
+  Column can be nil for a \"chart legend\" click, eg. clicking a category in the legend explaining the colours in a
+  multiple bar or line chart. Underlying records drills apply in that case!"
   [a-query stage-number column value row dimensions]
   (lib.convert/with-aggregation-list (lib.core/aggregations a-query stage-number)
-    (let [column-ref (when-let [a-ref (.-field_ref ^js column)]
+    (let [column-ref (when-let [a-ref (and column (.-field_ref ^js column))]
                        (legacy-ref->pMBQL a-ref))]
-      (->> (merge {:column     (fix-column-with-ref column-ref (js.metadata/parse-column column))
+      (->> (merge {:column     (when column
+                                 (fix-column-with-ref column-ref (js.metadata/parse-column column)))
                    :column-ref column-ref
                    :value      (cond
                                  (undefined? value) nil   ; Missing a value, ie. a column click
@@ -989,15 +1001,29 @@
   [a-query stage-number a-drill-thru & args]
   (apply lib.core/drill-thru a-query stage-number a-drill-thru args))
 
+(defn ^:export filter-drill-details
+  "Returns a JS object with opaque CLJS things in it, which are needed to render the complex UI for `column-filter`
+  and some `quick-filter` drills. Since the query might need an extra stage appended, this returns a possibly updated
+  `query` and `stageNumber`, as well as a `column` as returned by [[filterable-columns]]."
+  [{a-query :query
+    :keys [column stage-number value]
+    :as _filter-drill}]
+  #js {"column"     column
+       "query"      a-query
+       "stageIndex" stage-number
+       "value"      (if (= value :null) nil value)})
+
 (defn ^:export pivot-types
   "Returns an array of pivot types that are available in this drill-thru, which must be a pivot drill-thru."
   [a-drill-thru]
-  (to-array (lib.core/pivot-types a-drill-thru)))
+  (->> (lib.core/pivot-types a-drill-thru)
+       (map name)
+       to-array))
 
 (defn ^:export pivot-columns-for-type
   "Returns an array of pivotable columns of the specified type."
   [a-drill-thru pivot-type]
-  (lib.core/pivot-columns-for-type a-drill-thru pivot-type))
+  (to-array (lib.core/pivot-columns-for-type a-drill-thru (keyword pivot-type))))
 
 (defn ^:export with-different-table
   "Changes an existing query to use a different source table or card.
@@ -1048,3 +1074,56 @@
   "Returns the count of stages in query"
   [a-query]
   (lib.core/stage-count a-query))
+
+(defn ^:export filter-args-display-name
+  "Provides a reasonable display name for the `filter-clause` excluding the column-name.
+   Can be expanded as needed but only currently defined for a narrow set of date filters.
+
+   Falls back to the full filter display-name"
+  [a-query stage-number a-filter-clause]
+  (lib.core/filter-args-display-name a-query stage-number a-filter-clause))
+
+(defn ^:export expression-clause-for-legacy-expression
+  "Create an expression clause from `legacy-expression` at stage `stage-number` of `a-query`."
+  [a-query stage-number legacy-expression]
+  (lib.convert/with-aggregation-list (lib.core/aggregations a-query stage-number)
+    (let [expr (js->clj legacy-expression :keywordize-keys true)
+          expr (first (mbql.normalize/normalize-fragment [:query :aggregation] [expr]))]
+      (lib.convert/->pMBQL expr))))
+
+(defn ^:export legacy-expression-for-expression-clause
+  "Create a legacy expression from `an-expression-clause` at stage `stage-number` of `a-query`.
+  When processing aggregation clauses, the aggregation-options wrapper (e.g., specifying the name
+  of the aggregation expression) (if any) is thrown away."
+  [a-query stage-number an-expression-clause]
+  (lib.convert/with-aggregation-list (lib.core/aggregations a-query stage-number)
+    (let [legacy-expr (-> an-expression-clause lib.convert/->legacy-MBQL)]
+      (clj->js (cond-> legacy-expr
+                 (and (vector? legacy-expr)
+                      (= (first legacy-expr) :aggregation-options))
+                 (get 1))))))
+
+(defn ^:export field-values-search-info
+  "Info about whether the column in question has FieldValues associated with it for purposes of powering a search
+  widget in the QB filter modals."
+  [metadata-providerable column]
+  (-> (lib.field/field-values-search-info metadata-providerable column)
+      (update :has-field-values name)
+      (update-keys cljs-key->js-key)
+      clj->js))
+
+(defn ^:export update-lat-lon-filter
+  "Add or update a filter against a `latitude-column` and `longitude-column`."
+  [a-query stage-number latitude-column longitude-column bounds]
+  (let [bounds (js->clj bounds :keywordize-keys true)]
+    (lib.core/update-lat-lon-filter a-query stage-number latitude-column longitude-column bounds)))
+
+(defn ^:export update-numeric-filter
+  "Add or update a filter against `numeric-column`."
+  [a-query numeric-column stage-number start end]
+  (lib.core/update-numeric-filter a-query numeric-column stage-number start end))
+
+(defn ^:export update-temporal-filter
+  "Add or update a filter against `temporal-column`. Modify the temporal unit for any breakouts."
+  [a-query temporal-column stage-number start end]
+  (lib.core/update-temporal-filter a-query temporal-column stage-number start end))

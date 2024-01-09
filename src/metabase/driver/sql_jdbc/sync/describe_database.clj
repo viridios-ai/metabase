@@ -13,8 +13,7 @@
    [metabase.models :refer [Database]]
    [metabase.models.interface :as mi]
    [metabase.query-processor.store :as qp.store]
-   #_{:clj-kondo/ignore [:deprecated-namespace]}
-   [metabase.util.honeysql-extensions :as hx]
+   [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
    [metabase.util.malli.schema :as ms])
@@ -49,21 +48,16 @@
     (simple-select-probe-query :postgres \"public\" \"my_table\")
     ;; -> [\"SELECT TRUE FROM public.my_table WHERE 1 <> 1 LIMIT 0\"]"
   [driver :- :keyword
-   schema :- [:maybe :string] ; I think technically some DBs like SQL Server support empty schema and table names
+   schema :- [:maybe :string]        ; I think technically some DBs like SQL Server support empty schema and table names
    table  :- :string]
   ;; Using our SQL compiler here to get portable LIMIT (e.g. `SELECT TOP n ...` for SQL Server/Oracle)
-  (sql.qp/with-driver-honey-sql-version driver
-    (let [tru      (sql.qp/->honeysql driver true)
-          table    (sql.qp/->honeysql driver (hx/identifier :table schema table))
-          honeysql (case (long hx/*honey-sql-version*)
-                     1 {:select [[tru :_]]
-                        :from   [table]
-                        :where  [:not= 1 1]}
-                     2 {:select [[tru :_]]
-                        :from   [[table]]
-                        :where  [:inline [:not= 1 1]]})
-          honeysql (sql.qp/apply-top-level-clause driver :limit honeysql {:limit 0})]
-      (sql.qp/format-honeysql driver honeysql))))
+  (let [tru      (sql.qp/->honeysql driver true)
+        table    (sql.qp/->honeysql driver (h2x/identifier :table schema table))
+        honeysql {:select [[tru :_]]
+                  :from   [[table]]
+                  :where  [:inline [:not= 1 1]]}
+        honeysql (sql.qp/apply-top-level-clause driver :limit honeysql {:limit 0})]
+    (sql.qp/format-honeysql driver honeysql)))
 
 (defn- execute-select-probe-query
   "Execute the simple SELECT query defined above. The main goal here is to check whether we're able to execute a SELECT
@@ -95,16 +89,17 @@
       true
       (catch Throwable e
         (log/trace e "Assuming no SELECT privileges: caught exception")
-        (.rollback conn)
+        (when-not (.getAutoCommit conn)
+          (.rollback conn))
         false))))
 
-(defn- db-tables
+(defn db-tables
   "Fetch a JDBC Metadata ResultSet of tables in the DB, optionally limited to ones belonging to a given
   schema. Returns a reducible sequence of results."
   [driver ^DatabaseMetaData metadata ^String schema-or-nil ^String db-name-or-nil]
   (with-open [rset (.getTables metadata db-name-or-nil (some->> schema-or-nil (driver/escape-entity-name-for-metadata driver)) "%"
                                (into-array String ["TABLE" "PARTITIONED TABLE" "VIEW" "FOREIGN TABLE" "MATERIALIZED VIEW"
-                                                   "EXTERNAL TABLE"]))]
+                                                   "EXTERNAL TABLE" "DYNAMIC_TABLE"]))]
     (loop [acc []]
       (if-not (.next rset)
         acc
@@ -126,7 +121,7 @@
     (eduction
      (comp (mapcat (fn [schema]
                      (db-tables driver metadata schema db-name-or-nil)))
-           (filter (fn [{table-schema :schema, table-name :name}]
+           (filter (fn [{table-schema :schema table-name :name}]
                      (sql-jdbc.sync.interface/have-select-privilege? driver conn table-schema table-name))))
      (sql-jdbc.sync.interface/filtered-syncable-schemas driver conn metadata
                                                         schema-inclusion-filters schema-exclusion-filters))))

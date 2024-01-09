@@ -52,13 +52,13 @@
 ;; at a time.
 (let [f        (fn []
                  {:post [(integer? %)]}
-                 (log/info (u/colorize :yellow "GETTING ACTIVE USER COUNT!"))
+                 (log/debug (u/colorize :yellow "GETTING ACTIVE USER COUNT!"))
                  (assert ((requiring-resolve 'metabase.db/db-is-set-up?)) "Metabase DB is not yet set up")
                  ;; force this to use a new Connection, it seems to be getting called in situations where the Connection
                  ;; is from a different thread and is invalid by the time we get to use it
                  (let [result (binding [t2.conn/*current-connectable* nil]
-                                (t2/count :core_user :is_active true))]
-                   (log/info (u/colorize :green "=>") result)
+                                (t2/count :model/User :is_active true :type :personal))]
+                   (log/debug (u/colorize :green "=>") result)
                    result))
       memoized (memoize/ttl
                 f
@@ -229,7 +229,7 @@
                        (log/debug e (trs "Error validating token")))
                      ;; log every five minutes
                      :ttl/threshold (* 1000 60 5))]
-  (mu/defn token-features :- [:set ms/NonBlankString]
+  (mu/defn ^:dynamic *token-features* :- [:set ms/NonBlankString]
     "Get the features associated with the system's premium features token."
     []
     (try
@@ -242,7 +242,7 @@
 (defn- has-any-features?
   "True if we have a valid premium features token with ANY features."
   []
-  (boolean (seq (token-features))))
+  (boolean (seq (*token-features*))))
 
 (defn has-feature?
   "Does this instance's premium token have `feature`?
@@ -250,7 +250,7 @@
     (has-feature? :sandboxes)          ; -> true
     (has-feature? :toucan-management)  ; -> false"
   [feature]
-  (contains? (token-features) (name feature)))
+  (contains? (*token-features*) (name feature)))
 
 (defn ee-feature-error
   "Returns an error that can be used to throw when an enterprise feature check fails."
@@ -400,14 +400,14 @@
   :visibility :public
   :setter     :none
   :audit      :never
-  :getter     (fn [] (boolean ((token-features) "hosting")))
+  :getter     (fn [] (boolean ((*token-features*) "hosting")))
   :doc        false)
 
 ;; `enhancements` are not currently a specific "feature" that EE tokens can have or not have. Instead, it's a
 ;; catch-all term for various bits of EE functionality that we assume all EE licenses include. (This may change in the
 ;; future.)
 ;;
-;; By checking whether `(token-features)` is non-empty we can see whether we have a valid EE token. If the token is
+;; By checking whether `(*token-features*)` is non-empty we can see whether we have a valid EE token. If the token is
 ;; valid, we can enable EE enhancements.
 ;;
 ;; DEPRECATED -- it should now be possible to use the new 0.41.0+ features for everything previously covered by

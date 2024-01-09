@@ -6,7 +6,6 @@ import _ from "underscore";
 import { getIn, merge, updateIn } from "icepick";
 
 // Needed due to wrong dependency resolution order
-import { Mode } from "metabase/visualizations/click-actions/Mode";
 import {
   extractRemappings,
   getVisualizationTransformed,
@@ -29,7 +28,6 @@ import {
   getXValues,
   isTimeseries,
 } from "metabase/visualizations/lib/renderer_utils";
-import { ObjectMode } from "metabase/visualizations/click-actions/modes/ObjectMode";
 
 import { LOAD_COMPLETE_FAVICON } from "metabase/hoc/Favicon";
 import * as ML from "metabase-lib/v2";
@@ -352,7 +350,7 @@ export const getQuestion = createSelector(
 );
 
 function isQuestionEditable(question) {
-  return !question?.query().readOnly();
+  return question ? question.isQueryEditable() : false;
 }
 
 function areLegacyQueriesEqual(queryA, queryB, tableMetadata) {
@@ -534,11 +532,8 @@ const isZoomingRow = createSelector(
 );
 
 export const getMode = createSelector(
-  [getLastRunQuestion, isZoomingRow],
-  (question, isZoomingRow) =>
-    isZoomingRow
-      ? new Mode(question, ObjectMode)
-      : question && getQuestionMode(question),
+  [getLastRunQuestion],
+  question => question && getQuestionMode(question),
 );
 
 export const getIsObjectDetail = createSelector(
@@ -577,7 +572,7 @@ export const getIsSavedQuestionChanged = createSelector(
 
 export const getQuery = createSelector(
   [getQuestion],
-  question => question && question.query(),
+  question => question && question.legacyQuery(),
 );
 
 export const getIsRunnable = createSelector(
@@ -587,7 +582,7 @@ export const getIsRunnable = createSelector(
       return false;
     }
     if (!question.isSaved() || isDirty) {
-      return question.canRun() && !question.query().readOnly();
+      return question.canRun() && question.isQueryEditable();
     }
     return question.canRun();
   },
@@ -720,7 +715,7 @@ export const getVisualizationSettings = createSelector(
  */
 export const getIsNative = createSelector(
   [getQuestion],
-  question => question && question.query() instanceof NativeQuery,
+  question => question && question.legacyQuery() instanceof NativeQuery,
 );
 
 /**

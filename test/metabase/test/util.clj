@@ -12,11 +12,20 @@
    [environ.core :as env]
    [java-time.api :as t]
    [mb.hawk.parallel]
+   [metabase.config :as config]
    [metabase.db.query :as mdb.query]
    [metabase.db.util :as mdb.u]
    [metabase.models
-    :refer [Card Collection Dimension Field FieldValues Permissions
-            PermissionsGroup PermissionsGroupMembership Setting Table User]]
+    :refer [Card
+            Dimension
+            Field
+            FieldValues
+            Permissions
+            PermissionsGroup
+            PermissionsGroupMembership
+            Setting
+            Table
+            User]]
    [metabase.models.collection :as collection]
    [metabase.models.interface :as mi]
    [metabase.models.moderation-review :as moderation-review]
@@ -635,7 +644,7 @@
   [_]
   nil)
 
-(defmethod with-model-cleanup-additional-conditions Collection
+(defmethod with-model-cleanup-additional-conditions :model/Collection
   [_]
   ;; NEVER delete personal collections for the test users.
   [:or
@@ -643,13 +652,42 @@
    [:not-in :personal_owner_id (set (map (requiring-resolve 'metabase.test.data.users/user->id)
                                          @(requiring-resolve 'metabase.test.data.users/usernames)))]])
 
+(defmethod with-model-cleanup-additional-conditions :model/User
+  [_]
+  ;; Don't delete the internal user
+  [:not= :id config/internal-mb-user-id])
+
+(defmethod with-model-cleanup-additional-conditions :model/Database
+  [_]
+  ;; Don't delete the audit database
+  [:not= :id perms/audit-db-id])
+
+(defmulti with-max-model-id-additional-conditions
+  "Additional conditions applied to the query to find the max ID for a model prior to a test run. This can be used to
+  exclude rows which intentionally use non-sequential IDs, like the internal user."
+  {:arglists '([model])}
+  mi/model)
+
+(defmethod with-max-model-id-additional-conditions :default
+  [_]
+  [:not= :id config/internal-mb-user-id])
+
+(defmethod with-max-model-id-additional-conditions :model/User
+  [_]
+  [:not= :id config/internal-mb-user-id])
+
+(defmethod with-max-model-id-additional-conditions :model/Database
+ [_]
+ [:not= :id perms/audit-db-id])
+
 (defn do-with-model-cleanup [models f]
   {:pre [(sequential? models) (every? mdb.u/toucan-model? models)]}
   (mb.hawk.parallel/assert-test-is-not-parallel "with-model-cleanup")
   (initialize/initialize-if-needed! :db)
   (let [model->old-max-id (into {} (for [model models]
                                      [model (:max-id (t2/select-one [model [(keyword (str "%max." (name (first (t2/primary-keys model)))))
-                                                                            :max-id]]))]))]
+                                                                            :max-id]]
+                                                                    {:where (with-max-model-id-additional-conditions model)}))]))]
     (try
       (testing (str "\n" (pr-str (cons 'with-model-cleanup (map name models))) "\n")
         (f))
@@ -921,6 +959,12 @@
            :namespace (name ~collection-namespace))
     (fn [] ~@body)))
 
+(defmacro with-non-admin-groups-no-collection-perms
+  "Temporarily remove perms for the provided collection for all Groups besides the Admin group (which cannot have them
+  removed)."
+  [collection & body]
+  `(do-with-non-admin-groups-no-collection-perms ~collection (fn [] ~@body)))
+
 (defn do-with-all-users-permission
   "Call `f` without arguments in a context where the ''All Users'' group
   is granted the permission specified by `permission-path`.
@@ -930,6 +974,25 @@
   (t2.with-temp/with-temp [Permissions _ {:group_id (:id (perms-group/all-users))
                                           :object permission-path}]
     (f)))
+
+(defn do-with-all-user-data-perms-graph
+  "Implementation for [[with-all-users-data-perms]]"
+  [graph f]
+  (let [all-users-group-id  (u/the-id (perms-group/all-users))
+        current-graph       (get-in (perms/data-perms-graph) [:groups all-users-group-id])]
+    (try
+      (with-model-cleanup [Permissions]
+        (u/ignore-exceptions
+         (@#'perms/update-group-permissions! all-users-group-id graph))
+        (f))
+      (finally
+        (u/ignore-exceptions
+         (@#'perms/update-group-permissions! all-users-group-id current-graph))))))
+
+(defmacro with-all-users-data-perms-graph
+  "Runs `body` with data perms for the All Users group temporarily set to the values in `graph`."
+  [graph & body]
+  `(do-with-all-user-data-perms-graph ~graph (fn [] ~@body)))
 
 (defmacro with-all-users-permission
   "Run `body` with the ''All Users'' group being granted the permission

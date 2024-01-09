@@ -6,7 +6,9 @@ import {
   showDashboardCardActions,
   visitDashboard,
 } from "e2e/support/helpers";
-import { ORDERS, ORDERS_ID } from "metabase-types/api/mocks/presets";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+
+const { ORDERS_ID, ORDERS } = SAMPLE_DATABASE;
 
 describe("issue 17879", () => {
   beforeEach(() => {
@@ -21,28 +23,28 @@ describe("issue 17879", () => {
   it("should map dashcard date parameter to correct date range filter in target question - month -> day (metabase#17879)", () => {
     setupDashcardAndDrillToQuestion({
       sourceDateUnit: "month",
-      expectedFilterText: "Created At is April 1–30, 2022",
+      expectedFilterText: "Created At is Apr 1–30, 2022",
     });
   });
 
   it("should map dashcard date parameter to correct date range filter in target question - week -> day (metabase#17879)", () => {
     setupDashcardAndDrillToQuestion({
       sourceDateUnit: "week",
-      expectedFilterText: "Created At is April 24–30, 2022",
+      expectedFilterText: "Created At is Apr 24–30, 2022",
     });
   });
 
   it("should map dashcard date parameter to correct date range filter in target question - year -> day (metabase#17879)", () => {
     setupDashcardAndDrillToQuestion({
       sourceDateUnit: "year",
-      expectedFilterText: "Created At is January 1 – December 31, 2022",
+      expectedFilterText: "Created At is Jan 1 – Dec 31, 2022",
     });
   });
 
   it("should map dashcard date parameter to correct date range filter in target question - year -> month (metabase#17879)", () => {
     setupDashcardAndDrillToQuestion({
       sourceDateUnit: "year",
-      expectedFilterText: "Created At is January 1 – December 31, 2022",
+      expectedFilterText: "Created At is Jan 1 – Dec 31, 2022",
       targetDateUnit: "month",
     });
   });

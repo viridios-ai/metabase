@@ -15,15 +15,13 @@
    [metabase.driver.util :as driver.u]
    [metabase.email :as email]
    [metabase.models.collection :as collection]
-   [metabase.models.dashboard :as dashboard]
    [metabase.models.permissions :as perms]
    [metabase.models.user :refer [User]]
    [metabase.public-settings :as public-settings]
    [metabase.public-settings.premium-features :as premium-features]
    [metabase.pulse.markdown :as markdown]
-   [metabase.pulse.parameters :as params]
+   [metabase.pulse.parameters :as pulse-params]
    [metabase.pulse.render :as render]
-   [metabase.pulse.render.body :as body]
    [metabase.pulse.render.image-bundle :as image-bundle]
    [metabase.pulse.render.js-svg :as js-svg]
    [metabase.pulse.render.style :as style]
@@ -319,10 +317,11 @@
    (merge (common-context)
           {:emailType                 "pulse"
            :title                     (:name pulse)
-           :titleUrl                  (params/dashboard-url dashboard-id (params/parameters pulse dashboard))
+           :titleUrl                  (pulse-params/dashboard-url dashboard-id (pulse-params/parameters pulse dashboard))
            :dashboardDescription      (:description dashboard)
            ;; There are legacy pulses that exist without being tied to a dashboard
-           :dashboardHasTabs          (when dashboard-id (dashboard/has-tabs? dashboard-id))
+           :dashboardHasTabs          (when dashboard-id
+                                        (boolean (seq (t2/hydrate dashboard :tabs))))
            :creator                   (-> pulse :creator :common_name)
            :sectionStyle              (style/style (style/section-style))
            :notificationText          (if (nil? non-user-email)
@@ -360,43 +359,15 @@
      :content      (-> attachment-file .toURI .toURL)
      :description  (format "More results for '%s'" card-name)}))
 
-(defn- include-csv-attachment?
-  "Should this `card` and `results` include a CSV attachment?"
-  [{include-csv? :include_csv, include-xls? :include_xls, card-name :name, :as card} {:keys [cols rows], :as result-data}]
-  (letfn [(yes [reason & args]
-            (log/tracef "Including CSV attachment for Card %s because %s" (pr-str card-name) (apply format reason args))
-            true)
-          (no [reason & args]
-            (log/tracef "NOT including CSV attachment for Card %s because %s" (pr-str card-name) (apply format reason args))
-            false)]
-    (cond
-      include-csv?
-      (yes "it has `:include_csv`")
-
-      include-xls?
-      (no "it has `:include_xls`")
-
-      (some (complement body/show-in-table?) cols)
-      (yes "some columns are not included in rendered results")
-
-      (not= :table (render/detect-pulse-chart-type card nil result-data))
-      (no "we've determined it should not be rendered as a table")
-
-      (= (count (take body/rows-limit rows)) body/rows-limit)
-      (yes "the results have >= %d rows" body/rows-limit)
-
-      :else
-      (no "less than %d rows in results" body/rows-limit))))
-
 (defn- stream-api-results-to-export-format
-  "For legacy compatability. Takes QP results in the normal `:api` response format and streams them to a different
+  "For legacy compatibility. Takes QP results in the normal `:api` response format and streams them to a different
   format.
 
-  TODO -- this function is provided mainly because rewriting all of the Pulse/Alert code to stream results directly
+  TODO -- this function is provided mainly because rewriting all the Pulse/Alert code to stream results directly
   was a lot of work. I intend to rework that code so we can stream directly to the correct export format(s) at some
   point in the future; for now, this function is a stopgap.
 
-  Results are streamed synchronosuly. Caller is responsible for closing `os` when this call is complete."
+  Results are streamed synchronously. Caller is responsible for closing `os` when this call is complete."
   [export-format ^OutputStream os {{:keys [rows]} :data, database-id :database_id, :as results}]
   ;; make sure Database/driver info is available for the streaming results writers -- they might need this in order to
   ;; get timezone information when writing results
@@ -419,9 +390,9 @@
           (qp.si/finish! w results))))))
 
 (defn- result-attachment
-  [{{card-name :name, :as card} :card, {{:keys [rows], :as result-data} :data, :as result} :result}]
+  [{{card-name :name :as card} :card {{:keys [rows]} :data :as result} :result}]
   (when (seq rows)
-    [(when-let [temp-file (and (include-csv-attachment? card result-data)
+    [(when-let [temp-file (and (:include_csv card)
                                (create-temp-file-or-throw "csv"))]
        (with-open [os (io/output-stream temp-file)]
          (stream-api-results-to-export-format :csv os result))
@@ -449,7 +420,7 @@
 
 (defn- render-filters
   [notification dashboard]
-  (let [filters (params/parameters notification dashboard)
+  (let [filters (pulse-params/parameters notification dashboard)
         cells   (map
                  (fn [filter]
                    [:td {:class "filter-cell"
@@ -474,7 +445,7 @@
                                              :width "50%"
                                              :padding "4px 16px 4px 8px"
                                              :vertical-align "baseline"})}
-                       (params/value-string filter)]]]])
+                       (pulse-params/value-string filter)]]]])
                  filters)
         rows    (partition 2 2 nil cells)]
     (html
@@ -654,6 +625,7 @@
 (def ^:private admin-unsubscribed-template (template-path "alert_admin_unsubscribed_you"))
 (def ^:private added-template              (template-path "alert_you_were_added"))
 (def ^:private stopped-template            (template-path "alert_stopped_working"))
+(def ^:private archived-template           (template-path "alert_archived"))
 
 (defn send-new-alert-email!
   "Send out the initial 'new alert' email to the `creator` of the alert"
@@ -685,9 +657,10 @@
 (defn send-alert-stopped-because-archived-email!
   "Email to notify users when a card associated to their alert has been archived"
   [alert user {:keys [first_name last_name] :as _archiver}]
-  (let [deletion-text (format "the question was archived by %s %s" first_name last_name)]
-    (send-email! user not-working-subject stopped-template (assoc (common-alert-context alert) :deletionCause deletion-text))))
-
+  (let [{card-id :id card-name :name} (first-card alert)]
+    (send-email! user not-working-subject archived-template {:archiveURL   (urls/archive-url)
+                                                             :questionName (format "%s (#%d)" card-name card-id)
+                                                             :archiverName (format "%s %s" first_name last_name)})))
 (defn send-alert-stopped-because-changed-email!
   "Email to notify users when a card associated to their alert changed in a way that invalidates their alert"
   [alert user {:keys [first_name last_name] :as _archiver}]

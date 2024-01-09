@@ -14,7 +14,7 @@
    [metabase.public-settings.premium-features :as premium-features]
    [metabase.public-settings.premium-features-test :as premium-features-test]
    [metabase.pulse]
-   [metabase.pulse.test-util :as pulse.tu]
+   [metabase.pulse.test-util :as pulse.test-util]
    [metabase.query-processor :as qp]
    [metabase.test :as mt]
    [metabase.util :as u]
@@ -31,7 +31,7 @@
                 (t2.with-temp/with-temp [Card card {:dataset_query (mt/mbql-query venues {:aggregation [[:count]]})}]
                   ;; `with-gtaps` binds the current test user; we don't want that falsely affecting results
                   (mt/with-test-user nil
-                    (pulse.tu/send-pulse-created-by-user! user-kw card)))))]
+                    (pulse.test-util/send-pulse-created-by-user! user-kw card)))))]
       (is (= [[100]]
              (send-pulse-created-by-user! :crowberto)))
       (is (= [[10]]
@@ -226,7 +226,8 @@
                                                               :skip_if_empty false}
                          PulseCard             _             {:pulse_id pulse-id
                                                               :card_id  card-id
-                                                              :position 0}
+                                                              :position 0
+                                                              :include_csv true}
                          PulseChannel          {pc-id :id}   {:pulse_id pulse-id}
                          PulseChannelRecipient _             {:user_id          (mt/user->id :rasta)
                                                               :pulse_channel_id pc-id}]

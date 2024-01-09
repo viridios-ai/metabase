@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { t } from "ttag";
 import { usePrevious } from "react-use";
 
+import * as Lib from "metabase-lib";
 import * as Urls from "metabase/lib/urls";
 import { useDispatch, useSelector } from "metabase/lib/redux";
 import { SERVER_ERROR_TYPES } from "metabase/lib/errors";
@@ -11,14 +12,13 @@ import { useToggle } from "metabase/hooks/use-toggle";
 import Link from "metabase/core/components/Link";
 import Tooltip from "metabase/core/components/Tooltip";
 
-import ViewButton from "metabase/query_builder/components/view/ViewButton";
 import SavedQuestionHeaderButton from "metabase/query_builder/components/SavedQuestionHeaderButton/SavedQuestionHeaderButton";
 
 import { navigateBackToDashboard } from "metabase/query_builder/actions";
 import { MODAL_TYPES } from "metabase/query_builder/constants";
 import { getDashboard } from "metabase/query_builder/selectors";
-import * as ML_Urls from "metabase-lib/urls";
 import QuestionActions from "../QuestionActions";
+import { ExploreResultsLink } from "./ExploreResultsLink";
 import { FilterHeaderButton } from "./FilterHeaderButton";
 import { HeadBreadcrumbs } from "./HeaderBreadcrumbs";
 import QuestionDataSource from "./QuestionDataSource";
@@ -89,26 +89,26 @@ export function ViewTitleHeader(props) {
 
   const previousQuestion = usePrevious(question);
 
+  const query = question.query();
+  const previousQuery = usePrevious(query);
+
   useEffect(() => {
     if (!question.isStructured() || !previousQuestion?.isStructured()) {
       return;
     }
 
-    const filtersCount = question.query().filters().length;
-    const previousFiltersCount = previousQuestion.query().filters().length;
+    const filtersCount = Lib.filters(query, -1).length;
+    const previousFiltersCount = Lib.filters(previousQuery, -1).length;
 
     if (filtersCount > previousFiltersCount) {
       expandFilters();
     }
-  }, [previousQuestion, question, expandFilters]);
+  }, [previousQuestion, question, expandFilters, previousQuery, query]);
 
-  const isStructured = question.isStructured();
   const isNative = question.isNative();
   const isSaved = question.isSaved();
   const isDataset = question.isDataset();
-
-  const isSummarized =
-    isStructured && question.query().topLevelQuery().hasAggregations();
+  const isSummarized = Lib.aggregations(query, -1).length > 0;
 
   const onQueryChange = useCallback(
     newQuery => {
@@ -297,8 +297,7 @@ function AhHocQuestionLeftSide(props) {
   } = props;
 
   const handleTitleClick = () => {
-    const query = question.query();
-    if (!query.readOnly()) {
+    if (question.isQueryEditable()) {
       onOpenModal(MODAL_TYPES.SAVE);
     }
   };
@@ -390,7 +389,6 @@ function ViewTitleHeaderRightSide(props) {
     toggleBookmark,
     isSaved,
     isDataset,
-    isNative,
     isRunnable,
     isRunning,
     isNativeEditorOpen,
@@ -414,19 +412,12 @@ function ViewTitleHeaderRightSide(props) {
     onModelPersistenceChange,
   } = props;
   const isShowingNotebook = queryBuilderMode === "notebook";
-  const query = question.query();
-  const isReadOnlyQuery = query.readOnly();
-  const canEditQuery = !isReadOnlyQuery;
-  const canRunAdhocQueries = !isReadOnlyQuery;
-  const canNest = query.canNest();
+  const canEditQuery = question.isQueryEditable();
   const hasExploreResultsLink =
-    isNative &&
-    canNest &&
-    isSaved &&
-    canRunAdhocQueries &&
+    question.canExploreResults() &&
     MetabaseSettings.get("enable-nested-queries");
 
-  const isNewQuery = !query.hasData();
+  const isNewQuery = !question.legacyQuery().hasData();
   const hasSaveButton =
     !isDataset &&
     !!isDirty &&
@@ -455,8 +446,8 @@ function ViewTitleHeaderRightSide(props) {
       {FilterHeaderToggle.shouldRender(props) && (
         <FilterHeaderToggle
           className="ml2 mr1"
-          question={question}
-          expanded={areFiltersExpanded}
+          query={question.query()}
+          isExpanded={areFiltersExpanded}
           onExpand={onExpandFilters}
           onCollapse={onCollapseFilters}
         />
@@ -544,24 +535,6 @@ function ViewTitleHeaderRightSide(props) {
         </SaveButton>
       )}
     </ViewHeaderActionPanel>
-  );
-}
-
-ExploreResultsLink.propTypes = {
-  question: PropTypes.object.isRequired,
-};
-
-function ExploreResultsLink({ question }) {
-  const url = ML_Urls.getUrl(
-    question.composeThisQuery().setDisplay("table").setSettings({}),
-  );
-
-  return (
-    <Link to={url}>
-      <ViewButton medium p={[2, 1]} icon="insight" labelBreakpoint="sm">
-        {t`Explore results`}
-      </ViewButton>
-    </Link>
   );
 }
 

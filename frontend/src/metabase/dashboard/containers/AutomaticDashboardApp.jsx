@@ -8,13 +8,13 @@ import _ from "underscore";
 import { dissoc } from "icepick";
 import title from "metabase/hoc/Title";
 import withToast from "metabase/hoc/Toast";
-import DashboardData from "metabase/dashboard/hoc/DashboardData";
+import { DashboardData } from "metabase/dashboard/hoc/DashboardData";
 
 import ActionButton from "metabase/components/ActionButton";
 import Button from "metabase/core/components/Button";
 import Card from "metabase/components/Card";
 import { Icon } from "metabase/core/components/Icon";
-import Filter from "metabase/query_builder/components/Filter";
+import { Filter } from "metabase/admin/datamodel/components/Filter";
 import Link from "metabase/core/components/Link";
 import Tooltip from "metabase/core/components/Tooltip";
 
@@ -204,7 +204,7 @@ class AutomaticDashboardAppInner extends Component {
   }
 }
 
-const AutomaticDashboardApp = _.compose(
+export const AutomaticDashboardAppConnected = _.compose(
   connect(mapStateToProps, mapDispatchToProps),
   DashboardData,
   withToast,
@@ -331,5 +331,3 @@ const SuggestionsSidebar = ({ related }) => (
     <SuggestionsList suggestions={related} />
   </SidebarRoot>
 );
-
-export default AutomaticDashboardApp;

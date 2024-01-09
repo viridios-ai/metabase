@@ -35,7 +35,7 @@
 
 (defn- disable-other-sso-types [thunk]
   (classloader/require 'metabase.api.ldap)
-  (let [current-features (premium-features/token-features)]
+  (let [current-features (premium-features/*token-features*)]
     ;; The :sso-jwt token is needed to set the jwt-enabled setting
     (premium-features-test/with-premium-features #{:sso-jwt}
       (mt/with-temporary-setting-values [ldap-enabled false
@@ -51,7 +51,7 @@
 (def ^:private default-idp-cert           (slurp "test_resources/sso/auth0-public-idp.cert"))
 
 (defn call-with-default-saml-config [f]
-  (let [current-features (premium-features/token-features)]
+  (let [current-features (premium-features/*token-features*)]
     (premium-features-test/with-premium-features #{:sso-saml}
       (mt/with-temporary-setting-values [saml-enabled                       true
                                          saml-identity-provider-uri         default-idp-uri
@@ -79,7 +79,7 @@
 
 (defmacro with-saml-default-setup [& body]
   ;; most saml tests make actual http calls, so ensuring any nested with-temp doesn't create transaction
-  `(mt/with-ensure-with-temp-no-transaction!
+  `(mt/test-helpers-set-global-values!
     (premium-features-test/with-additional-premium-features #{:sso-saml}
       (call-with-login-attributes-cleared!
        (fn []

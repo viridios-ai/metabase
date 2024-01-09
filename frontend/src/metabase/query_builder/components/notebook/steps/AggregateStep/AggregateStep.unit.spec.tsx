@@ -1,5 +1,5 @@
 import userEvent from "@testing-library/user-event";
-import { render, screen, getIcon } from "__support__/ui";
+import { renderWithProviders, screen, getIcon } from "__support__/ui";
 import * as Lib from "metabase-lib";
 import {
   createQuery,
@@ -27,10 +27,11 @@ function createAggregatedQuery({
 function setup(step = createMockNotebookStep()) {
   const updateQuery = jest.fn();
 
-  render(
+  renderWithProviders(
     <AggregateStep
       step={step}
       query={step.query}
+      stageIndex={step.stageIndex}
       topLevelQuery={step.topLevelQuery}
       color="summarize"
       isLastOpened={false}
@@ -39,7 +40,7 @@ function setup(step = createMockNotebookStep()) {
     />,
   );
 
-  function getNextQuery() {
+  function getNextQuery(): Lib.Query {
     const [lastCall] = updateQuery.mock.calls.slice(-1);
     return lastCall[0];
   }

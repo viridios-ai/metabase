@@ -3,15 +3,17 @@ import { Component } from "react";
 import PropTypes from "prop-types";
 import _ from "underscore";
 
+import { isSmallScreen, getMainElement } from "metabase/lib/dom";
+
 import { DashboardHeader } from "metabase/dashboard/components/DashboardHeader";
 import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
 import { FilterApplyButton } from "metabase/parameters/components/FilterApplyButton";
 import { getVisibleParameters } from "metabase/parameters/utils/ui";
-import DashboardControls from "metabase/dashboard/hoc/DashboardControls";
+import { DashboardControls } from "metabase/dashboard/hoc/DashboardControls";
 import { getValuePopulatedParameters } from "metabase-lib/parameters/utils/parameter-values";
 
 import { DashboardSidebars } from "../DashboardSidebars";
-import DashboardGrid from "../DashboardGrid";
+import { DashboardGridConnected } from "../DashboardGrid";
 import { SIDEBAR_NAME } from "../../constants";
 
 import {
@@ -19,7 +21,7 @@ import {
   DashboardStyled,
   DashboardLoadingAndErrorWrapper,
   DashboardBody,
-  HeaderContainer,
+  DashboardHeaderContainer,
   ParametersAndCardsContainer,
   ParametersWidgetContainer,
 } from "./Dashboard.styled";
@@ -27,15 +29,12 @@ import {
   DashboardEmptyState,
   DashboardEmptyStateWithoutAddPrompt,
 } from "./DashboardEmptyState/DashboardEmptyState";
-import { updateParametersWidgetStickiness } from "./stickyParameters";
 
-// NOTE: move DashboardControls HoC to container
-
-class Dashboard extends Component {
+class DashboardInner extends Component {
   state = {
     error: null,
-    isParametersWidgetSticky: false,
     parametersListLength: 0,
+    hasScroll: getMainElement()?.scrollTop > 0,
   };
 
   static defaultProps = {
@@ -55,11 +54,13 @@ class Dashboard extends Component {
 
   async componentDidMount() {
     await this.loadDashboard(this.props.dashboardId);
+    getMainElement().addEventListener("scroll", this.onMainScroll, {
+      capture: false,
+      passive: true,
+    });
   }
 
   async componentDidUpdate(prevProps) {
-    updateParametersWidgetStickiness(this);
-
     if (prevProps.dashboardId !== this.props.dashboardId) {
       await this.loadDashboard(this.props.dashboardId);
       return;
@@ -81,6 +82,7 @@ class Dashboard extends Component {
 
   componentWillUnmount() {
     this.props.cancelFetchDashboardCardData();
+    getMainElement().removeEventListener("scroll", this.onMainScroll);
   }
 
   async loadDashboard(dashboardId) {
@@ -100,11 +102,21 @@ class Dashboard extends Component {
 
     loadDashboardParams();
 
-    try {
-      await fetchDashboard(dashboardId, location.query, {
+    const result = await fetchDashboard({
+      dashId: dashboardId,
+      queryParams: location.query,
+      options: {
         clearCache: !isNavigatingBackToDashboard,
         preserveParameters: isNavigatingBackToDashboard,
-      });
+      },
+    });
+
+    if (result.error) {
+      setErrorPage(result.payload);
+      return;
+    }
+
+    try {
       if (editingOnLoad) {
         this.setEditing(this.props.dashboard);
       }
@@ -142,13 +154,17 @@ class Dashboard extends Component {
   };
 
   onSharingClick = () => {
-    this.props.setSharing(true);
+    this.props.setSharing(!this.props.isSharing);
   };
 
   onAddQuestion = () => {
     const { dashboard } = this.props;
     this.setEditing(dashboard);
     this.props.toggleSidebar(SIDEBAR_NAME.addQuestion);
+  };
+
+  onMainScroll = event => {
+    this.setState({ hasScroll: event.target.scrollTop > 0 });
   };
 
   renderContent = () => {
@@ -191,7 +207,7 @@ class Dashboard extends Component {
       );
     }
     return (
-      <DashboardGrid
+      <DashboardGridConnected
         {...this.props}
         dashboard={this.props.dashboard}
         isNightMode={shouldRenderAsNightMode}
@@ -205,7 +221,6 @@ class Dashboard extends Component {
       addParameter,
       dashboard,
       isEditing,
-      isEditingParameter,
       isFullscreen,
       isNightMode,
       isSharing,
@@ -220,11 +235,12 @@ class Dashboard extends Component {
       isAutoApplyFilters,
     } = this.props;
 
-    const { error, isParametersWidgetSticky } = this.state;
+    const { error, parametersListLength, hasScroll } = this.state;
 
     const shouldRenderAsNightMode = isNightMode && isFullscreen;
 
     const visibleParameters = getVisibleParameters(parameters);
+    const hasVisibleParameters = visibleParameters.length > 0;
 
     const parametersWidget = (
       <SyncedParametersList
@@ -244,14 +260,10 @@ class Dashboard extends Component {
     );
 
     const shouldRenderParametersWidgetInViewMode =
-      !isEditing && !isFullscreen && visibleParameters.length > 0;
+      !isEditing && !isFullscreen && hasVisibleParameters;
 
     const shouldRenderParametersWidgetInEditMode =
-      isEditing && visibleParameters.length > 0;
-
-    const cardsContainerShouldHaveMarginTop =
-      !shouldRenderParametersWidgetInViewMode &&
-      (!isEditing || isEditingParameter);
+      isEditing && hasVisibleParameters;
 
     return (
       <DashboardLoadingAndErrorWrapper
@@ -264,7 +276,7 @@ class Dashboard extends Component {
         {() => (
           <DashboardStyled>
             {isHeaderVisible && (
-              <HeaderContainer
+              <DashboardHeaderContainer
                 isFullscreen={isFullscreen}
                 isNightMode={shouldRenderAsNightMode}
               >
@@ -285,7 +297,7 @@ class Dashboard extends Component {
                     {parametersWidget}
                   </ParametersWidgetContainer>
                 )}
-              </HeaderContainer>
+              </DashboardHeaderContainer>
             )}
 
             <DashboardBody isEditingOrSharing={isEditing || isSharing}>
@@ -298,17 +310,17 @@ class Dashboard extends Component {
                 {shouldRenderParametersWidgetInViewMode && (
                   <ParametersWidgetContainer
                     data-testid="dashboard-parameters-widget-container"
-                    isSticky={isParametersWidgetSticky}
+                    hasScroll={hasScroll}
+                    isSticky={isParametersWidgetContainersSticky(
+                      parametersListLength,
+                    )}
                   >
                     {parametersWidget}
                     <FilterApplyButton />
                   </ParametersWidgetContainer>
                 )}
 
-                <CardsContainer
-                  addMarginTop={cardsContainerShouldHaveMarginTop}
-                  id="Dashboard-Cards-Container"
-                >
+                <CardsContainer id="Dashboard-Cards-Container">
                   {this.renderContent()}
                 </CardsContainer>
               </ParametersAndCardsContainer>
@@ -326,7 +338,7 @@ class Dashboard extends Component {
   }
 }
 
-Dashboard.propTypes = {
+DashboardInner.propTypes = {
   loadDashboardParams: PropTypes.func,
   location: PropTypes.object,
 
@@ -387,4 +399,14 @@ Dashboard.propTypes = {
   isAutoApplyFilters: PropTypes.bool,
 };
 
-export default DashboardControls(Dashboard);
+function isParametersWidgetContainersSticky(parameterCount) {
+  if (!isSmallScreen()) {
+    return true;
+  }
+
+  // Sticky header with more than 5 parameters
+  // takes too much space on small screens
+  return parameterCount <= 5;
+}
+
+export const Dashboard = DashboardControls(DashboardInner);

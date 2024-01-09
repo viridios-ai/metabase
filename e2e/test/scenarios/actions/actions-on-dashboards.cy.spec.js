@@ -476,32 +476,34 @@ const MODEL_NAME = "Test Action Model";
           });
         });
 
-        it(
-          "can update various data types via implicit actions",
-          { tags: "@flaky" },
-          () => {
-            cy.get("@modelId").then(id => {
-              createImplicitAction({
-                kind: "update",
-                model_id: id,
-              });
+        it("can update various data types via implicit actions", () => {
+          cy.get("@modelId").then(id => {
+            createImplicitAction({
+              kind: "update",
+              model_id: id,
             });
+          });
 
-            createDashboardWithActionButton({
-              actionName: "Update",
-              idFilter: true,
-            });
+          createDashboardWithActionButton({
+            actionName: "Update",
+            idFilter: true,
+          });
 
-            filterWidget().click();
-            addWidgetStringFilter("1");
+          cy.wait("@getModel");
+          cy.findByRole("button", { name: "Update" });
 
-            cy.findByRole("button", { name: "Update" }).click();
+          filterWidget().click();
+          addWidgetStringFilter("1");
 
-            cy.wait("@prefetchValues");
+          cy.findByRole("button", { name: "Update" }).click();
 
-            const oldRow = many_data_types_rows[0];
+          cy.wait("@prefetchValues");
 
-            modal().within(() => {
+          const oldRow = many_data_types_rows[0];
+
+          modal()
+            .first()
+            .within(() => {
               changeValue({
                 fieldName: "UUID",
                 fieldType: "text",
@@ -549,32 +551,31 @@ const MODEL_NAME = "Test Action Model";
               cy.button("Update").click();
             });
 
-            cy.wait("@executeAction");
+          cy.wait("@executeAction");
 
-            queryWritableDB(
-              `SELECT * FROM ${TEST_COLUMNS_TABLE} WHERE id = 1`,
-              dialect,
-            ).then(result => {
-              expect(result.rows.length).to.equal(1);
+          queryWritableDB(
+            `SELECT * FROM ${TEST_COLUMNS_TABLE} WHERE id = 1`,
+            dialect,
+          ).then(result => {
+            expect(result.rows.length).to.equal(1);
 
-              const row = result.rows[0];
+            const row = result.rows[0];
 
-              expect(row).to.have.property(
-                "uuid",
-                "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77",
-              );
-              expect(row).to.have.property("integer", 123);
-              expect(row).to.have.property("float", 2.2);
-              expect(row).to.have.property("string", "new string");
-              expect(row).to.have.property(
-                "boolean",
-                dialect === "mysql" ? 0 : false,
-              );
-              expect(row.date).to.include("2020-05-01"); // js converts this to a full date obj
-              expect(row.timestampTZ).to.include("2020-05-01"); // we got timezone issues here
-            });
-          },
-        );
+            expect(row).to.have.property(
+              "uuid",
+              "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77",
+            );
+            expect(row).to.have.property("integer", 123);
+            expect(row).to.have.property("float", 2.2);
+            expect(row).to.have.property("string", "new string");
+            expect(row).to.have.property(
+              "boolean",
+              dialect === "mysql" ? 0 : false,
+            );
+            expect(row.date).to.include("2020-05-01"); // js converts this to a full date obj
+            expect(row.timestampTZ).to.include("2020-05-01"); // we got timezone issues here
+          });
+        });
 
         it("can insert various data types via implicit actions", () => {
           cy.get("@modelId").then(id => {
@@ -702,6 +703,9 @@ const MODEL_NAME = "Test Action Model";
             idFilter: true,
           });
 
+          cy.wait("@getModel");
+          cy.findByRole("button", { name: "Update" });
+
           filterWidget().click();
           addWidgetStringFilter("1");
 
@@ -712,70 +716,72 @@ const MODEL_NAME = "Test Action Model";
           const oldRow = many_data_types_rows[0];
           const newTime = "2020-01-10T01:35:55";
 
-          modal().within(() => {
-            changeValue({
-              fieldName: "Date",
-              fieldType: "date",
-              oldValue: oldRow.date,
-              newValue: newTime.slice(0, 10),
-            });
-
-            changeValue({
-              fieldName: "Datetime",
-              fieldType: "datetime-local",
-              oldValue: oldRow.datetime.replace(" ", "T"),
-              newValue: newTime,
-            });
-
-            changeValue({
-              fieldName: "Time",
-              fieldType: "time",
-              oldValue: oldRow.time,
-              newValue: newTime.slice(-8),
-            });
-
-            changeValue({
-              fieldName: "Timestamp",
-              fieldType: "datetime-local",
-              oldValue: oldRow.timestamp.replace(" ", "T"),
-              newValue: newTime,
-            });
-
-            // only postgres has timezone-aware columns
-            // the instance is in US/Pacific so it's -8 hours
-            if (dialect === "postgres") {
+          modal()
+            .first()
+            .within(() => {
               changeValue({
-                fieldName: "DatetimeTZ",
+                fieldName: "Date",
+                fieldType: "date",
+                oldValue: oldRow.date,
+                newValue: newTime.slice(0, 10),
+              });
+
+              changeValue({
+                fieldName: "Datetime",
                 fieldType: "datetime-local",
-                oldValue: "2020-01-01T00:35:55",
+                oldValue: oldRow.datetime.replace(" ", "T"),
                 newValue: newTime,
               });
 
               changeValue({
-                fieldName: "TimestampTZ",
-                fieldType: "datetime-local",
-                oldValue: "2020-01-01T00:35:55",
-                newValue: newTime,
-              });
-            }
-
-            if (dialect === "mysql") {
-              changeValue({
-                fieldName: "DatetimeTZ",
-                fieldType: "datetime-local",
-                oldValue: oldRow.datetimeTZ.replace(" ", "T"),
-                newValue: newTime,
+                fieldName: "Time",
+                fieldType: "time",
+                oldValue: oldRow.time,
+                newValue: newTime.slice(-8),
               });
 
               changeValue({
-                fieldName: "TimestampTZ",
+                fieldName: "Timestamp",
                 fieldType: "datetime-local",
-                oldValue: oldRow.timestampTZ.replace(" ", "T"),
+                oldValue: oldRow.timestamp.replace(" ", "T"),
                 newValue: newTime,
               });
-            }
-            cy.button("Update").click();
-          });
+
+              // only postgres has timezone-aware columns
+              // the instance is in US/Pacific so it's -8 hours
+              if (dialect === "postgres") {
+                changeValue({
+                  fieldName: "DatetimeTZ",
+                  fieldType: "datetime-local",
+                  oldValue: "2020-01-01T00:35:55",
+                  newValue: newTime,
+                });
+
+                changeValue({
+                  fieldName: "TimestampTZ",
+                  fieldType: "datetime-local",
+                  oldValue: "2020-01-01T00:35:55",
+                  newValue: newTime,
+                });
+              }
+
+              if (dialect === "mysql") {
+                changeValue({
+                  fieldName: "DatetimeTZ",
+                  fieldType: "datetime-local",
+                  oldValue: oldRow.datetimeTZ.replace(" ", "T"),
+                  newValue: newTime,
+                });
+
+                changeValue({
+                  fieldName: "TimestampTZ",
+                  fieldType: "datetime-local",
+                  oldValue: oldRow.timestampTZ.replace(" ", "T"),
+                  newValue: newTime,
+                });
+              }
+              cy.button("Update").click();
+            });
 
           cy.wait("@executeAction");
 
@@ -986,6 +992,7 @@ describe("action error handling", { tags: ["@external", "@actions"] }, () => {
     });
 
     cy.intercept("GET", "/api/action").as("getActions");
+    cy.intercept("GET", /\/api\/card\/\d+/).as("getModel");
     cy.intercept("GET", "/api/dashboard/*/dashcard/*/execute?parameters=*").as(
       "prefetchValues",
     );
@@ -1003,24 +1010,29 @@ describe("action error handling", { tags: ["@external", "@actions"] }, () => {
 
     createDashboardWithActionButton({ actionName, idFilter: true });
 
+    cy.wait("@getModel");
+    cy.findByRole("button", { name: "Update" });
+
     filterWidget().click();
     addWidgetStringFilter("5");
     cy.button(actionName).click();
 
     cy.wait("@prefetchValues");
 
-    modal().within(() => {
-      cy.findByLabelText("Team Name").clear().type("Kind Koalas");
-      cy.button(actionName).click();
-      cy.wait("@executeAction");
+    modal()
+      .first()
+      .within(() => {
+        cy.findByLabelText("Team Name").clear().type("Kind Koalas");
+        cy.button(actionName).click();
+        cy.wait("@executeAction");
 
-      cy.findByLabelText("Team Name").should("not.exist");
-      cy.findByLabelText(
-        "Team Name: This Team_name value already exists.",
-      ).should("exist");
+        cy.findByLabelText("Team Name").should("not.exist");
+        cy.findByLabelText(
+          "Team Name: This Team_name value already exists.",
+        ).should("exist");
 
-      cy.findByText("Team_name already exists.").should("exist");
-    });
+        cy.findByText("Team_name already exists.").should("exist");
+      });
   });
 });
 

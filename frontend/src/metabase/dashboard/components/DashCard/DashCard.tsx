@@ -12,7 +12,6 @@ import { mergeSettings } from "metabase/visualizations/lib/settings";
 import {
   getDashcardResultsError,
   isDashcardLoading,
-  isVirtualDashCard,
 } from "metabase/dashboard/utils";
 
 import { isActionCard } from "metabase/actions/utils";
@@ -42,8 +41,8 @@ import type {
   NavigateToNewCardFromDashboardOpts,
   DashCardOnChangeCardAndRunHandler,
 } from "./types";
-import { DashCardActionsPanel } from "./DashCardActionsPanel";
-import DashCardVisualization from "./DashCardVisualization";
+import { DashCardActionsPanel } from "./DashCardActionsPanel/DashCardActionsPanel";
+import { DashCardVisualization } from "./DashCardVisualization";
 import { DashCardRoot } from "./DashCard.styled";
 
 function preventDragging(event: React.SyntheticEvent) {
@@ -74,6 +73,7 @@ export interface DashCardProps {
   headerIcon?: IconProps;
 
   onAddSeries: () => void;
+  onReplaceCard: () => void;
   onRemove: () => void;
   markNewCardSeen: (dashcardId: DashCardId) => void;
   navigateToNewCardFromDashboard?: (
@@ -85,7 +85,7 @@ export interface DashCardProps {
   onChangeLocation: (location: LocationDescriptor) => void;
 }
 
-function DashCard({
+function DashCardInner({
   dashcard,
   dashcardData,
   dashboard,
@@ -105,6 +105,7 @@ function DashCard({
   clickBehaviorSidebarDashcard,
   headerIcon,
   onAddSeries,
+  onReplaceCard,
   onRemove,
   navigateToNewCardFromDashboard,
   markNewCardSeen,
@@ -268,10 +269,10 @@ function DashCard({
             dashcard={dashcard}
             isLoading={isLoading}
             isPreviewing={isPreviewingCard}
-            isVirtualDashCard={isVirtualDashCard(dashcard)}
             hasError={hasError}
             onAddSeries={onAddSeries}
             onRemove={onRemove}
+            onReplaceCard={onReplaceCard}
             onUpdateVisualizationSettings={onUpdateVisualizationSettings}
             onReplaceAllVisualizationSettings={
               onReplaceAllVisualizationSettings
@@ -317,7 +318,6 @@ function DashCard({
   );
 }
 
-// eslint-disable-next-line import/no-default-export -- deprecated usage
-export default Object.assign(DashCard, {
+export const DashCard = Object.assign(DashCardInner, {
   root: DashCardRoot,
 });
