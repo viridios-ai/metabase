@@ -31,8 +31,6 @@
    [metabase.test.data.interface :as tx]
    [metabase.util :as u]
    [metabase.util.honey-sql-2 :as h2x]
-   #_{:clj-kondo/ignore [:discouraged-namespace :deprecated-namespace]}
-   [metabase.util.honeysql-extensions :as hx]
    [metabase.util.log :as log]
    [toucan2.core :as t2]
    [toucan2.tools.with-temp :as t2.with-temp])
@@ -47,8 +45,7 @@
                       ;;
                       ;; 2. Make sure we're in Honey SQL 2 mode for all the little SQL snippets we're compiling in these
                       ;;    tests.
-                      (binding [sync-util/*log-exceptions-and-continue?* false
-                                hx/*honey-sql-version*                   2]
+                      (binding [sync-util/*log-exceptions-and-continue?* false]
                         (thunk))))
 
 (defn drop-if-exists-and-create-db!
@@ -166,13 +163,13 @@
   (mt/test-driver :mysql
     (mt/dataset year-db
       (testing "By default YEAR"
-        (is (= #{{:name "year_column", :base_type :type/Date, :semantic_type nil}
+        (is (= #{{:name "year_column", :base_type :type/Integer, :semantic_type nil}
                  {:name "id", :base_type :type/Integer, :semantic_type :type/PK}}
                (db->fields (mt/db)))))
       (let [table  (t2/select-one Table :db_id (u/id (mt/db)))
             fields (t2/select Field :table_id (u/id table) :name "year_column")]
         (testing "Can select from this table"
-          (is (= [[#t "2001-01-01"] [#t "2002-01-01"] [#t "1999-01-01"]]
+          (is (= [[2001] [2002] [1999]]
                  (metadata-queries/table-rows-sample table fields (constantly conj)))))
         (testing "We can fingerprint this table"
           (is (= 1
@@ -714,7 +711,8 @@
                                      [spec [:mysql new-connection-details]]
                                      (with-redefs [sql-jdbc.conn/db->pooled-connection-spec (fn [_] spec)]
                                        (driver/current-user-table-privileges driver/*driver*
-                                                                             (assoc (mt/db) :name "table_privileges_test"))))))]
+                                                                             (assoc (mt/db) :name "test table privileges db"
+                                                                                    :details new-connection-details))))))]
           (try
             (doseq [stmt ["CREATE TABLE `bar` (id INTEGER);"
                           "CREATE TABLE `baz` (id INTEGER);"

@@ -5,6 +5,8 @@
    [metabase.public-settings :as public-settings]
    [metabase.util.i18n :refer [tru]])
   (:import
+   (java.time LocalDate)
+   (java.time.format DateTimeFormatter DateTimeFormatterBuilder ResolverStyle)
    (java.text NumberFormat)
    (java.util Locale)))
 
@@ -12,29 +14,73 @@
 
 (def currency-regex "Supported currency signs" #"[$€£¥₹₪₩₿¢\s]")
 
-(defn get-number-separators
-  "Setting-dependent number separators. Defaults to `.` and `,`. Stored/returned as a string."
-  []
-  (get-in (public-settings/custom-formatting) [:type/Number :number_separators] ".,"))
+(defn get-settings
+  "Settings that determine how the CSV is parsed.
 
-(defn parse-bool
+  Includes:
+    - number-separators: Decimal delimiter defaults to `.` and group delimiter defaults to `,`. Stored/returned as a string."
+  []
+  {:number-separators (get-in (public-settings/custom-formatting) [:type/Number :number_separators] ".,")})
+
+(defn- parse-bool
   "Parses a boolean value (true/t/yes/y/1 and false/f/no/n/0). Case-insensitive."
   [s]
   (cond
     (re-matches #"(?i)true|t|yes|y|1" s) true
     (re-matches #"(?i)false|f|no|n|0" s) false
     :else                                (throw (IllegalArgumentException.
-                                                 (tru "{0} is not a recognizable boolean" s)))))
+                                                 (tru "''{0}'' is not a recognizable boolean" s)))))
 
-(defn parse-date
-  "Parses a date.
+(def local-date-patterns
+  "patterns used to generate the local date formatter. Excludes ISO_LOCAL_DATE (uuuu-MM-dd) because there's
+  already a built-in DateTimeFormatter for that: [[DateTimeFormatter/ISO_LOCAL_DATE]]"
+  ;; uuuu is like yyyy but is required for strict parsing and also supports negative years for BC dates
+  ;; see https://stackoverflow.com/questions/41103603/issue-with-datetimeparseexception-when-using-strict-resolver-style
+  ;; uuuu is faster than using yyyy and setting a default era
+  ["MMM dd uuuu"        ; Jan 30 2000
+   "MMM dd, uuuu"       ; Jan 30, 2000
+   "dd MMM uuuu"        ; 30 Jan 2000
+   "dd MMM, uuuu"       ; 30 Jan, 2000
+   "MMMM d uuuu"        ; January 30 2000
+   "MMMM d, uuuu"       ; January 30, 2000
+   "d MMMM uuuu"        ; 30 January 2000
+   "d MMMM, uuuu"       ; 30 January, 2000
+   "EEEE, MMMM d uuuu"  ; Sunday, January 30 2000
+   "EEEE, MMMM d, uuuu" ; Sunday, January 30, 2000
+   ])
+
+(def local-date-formatter
+  "DateTimeFormatter that runs through a set of patterns to parse a variety of local date formats."
+  (let [builder (-> (DateTimeFormatterBuilder.)
+                    (.parseCaseInsensitive))]
+    (doseq [pattern local-date-patterns]
+      (.appendOptional builder (DateTimeFormatter/ofPattern pattern)))
+    (-> builder
+        (.appendOptional DateTimeFormatter/ISO_LOCAL_DATE)
+        (.toFormatter)
+        (.withResolverStyle ResolverStyle/STRICT))))
+
+(defn parse-local-date
+  "Parses a local date string.
 
   Supported formats:
-    - yyyy-MM-dd"
+    - yyyy-MM-dd
+    - MMM dd yyyy
+    - MMM dd, yyyy
+    - dd MMM yyyy
+    - dd MMM, yyyy
+    - MMMM d yyyy
+    - MMMM d, yyyy
+    - d MMMM yyyy
+    - d MMMM, yyyy"
   [s]
-  (t/local-date s))
+  (try
+    (LocalDate/parse s local-date-formatter)
+    (catch Exception _
+      (throw (IllegalArgumentException.
+              (tru "''{0}'' is not a recognizable date" s))))))
 
-(defn parse-datetime
+(defn parse-local-datetime
   "Parses a string representing a local datetime into a LocalDateTime.
 
   Supported formats:
@@ -47,17 +93,17 @@
   [s]
   (-> s (str/replace \space \T) t/local-date-time))
 
-(defn parse-as-datetime
-  "Parses a string `s` as a LocalDateTime. Supports all the formats for [[parse-date]] and [[parse-datetime]]."
+(defn- parse-as-datetime
+  "Parses a string `s` as a LocalDateTime. Supports all the formats for [[parse-local-date]] and [[parse-datetime]]."
   [s]
   (try
-    (t/local-date-time (parse-date s) (t/local-time "00:00:00"))
+    (t/local-date-time (parse-local-date s) (t/local-time "00:00:00"))
     (catch Exception _
       (try
-        (parse-datetime s)
+        (parse-local-datetime s)
         (catch Exception _
           (throw (IllegalArgumentException.
-                  (tru "{0} is not a recognizable datetime" s))))))))
+                  (tru "''{0}'' is not a recognizable datetime" s))))))))
 
 (defn parse-offset-datetime
   "Parses a string representing an offset datetime into an OffsetDateTime.
@@ -78,10 +124,10 @@
   [s]
   (try
     (-> s (str/replace \space \T) t/offset-date-time)
-    (catch Exception e
-      (throw (IllegalArgumentException. (tru "{0} is not a recognizable zoned datetime" s) e)))))
+    (catch Exception _
+      (throw (IllegalArgumentException. (tru "''{0}'' is not a recognizable zoned datetime" s))))))
 
-(defn remove-currency-signs
+(defn- remove-currency-signs
   "Remove any recognized currency signs from the string (c.f. [[currency-regex]])."
   [s]
   (str/replace s currency-regex ""))
@@ -102,7 +148,7 @@
         (- parsed-number)
         parsed-number))))
 
-(defn parse-number
+(defn- parse-number
   "Parse an integer or float"
   [number-separators s]
   (try
@@ -110,66 +156,61 @@
          (str/trim)
          (remove-currency-signs)
          (parse-plain-number number-separators))
-    (catch Throwable e
-      (throw (ex-info
-              (tru "{0} is not a recognizable number" s)
-              {}
-              e)))))
+    (catch Exception _
+      (throw (IllegalArgumentException. (tru "''{0}'' is not a recognizable number" s))))))
+
+(defn- parse-as-biginteger
+  "Parses a string representing a number as a java.math.BigInteger, rounding down if necessary."
+  [number-separators s]
+  (biginteger (parse-number number-separators s)))
 
 (defmulti upload-type->parser
-  "Returns a function for the given `metabase.upload` type that will parse a string value (from a CSV) into a value
+  "Returns a function for the given `metabase.upload` column type that will parse a string value (from a CSV) into a value
   suitable for insertion."
-  {:arglists '([upload-type])}
-  identity)
+  {:arglists '([upload-type settings])}
+  (fn [upload-type _]
+    upload-type))
 
 (defmethod upload-type->parser :metabase.upload/varchar-255
-  [_]
+  [_ _]
   identity)
 
 (defmethod upload-type->parser :metabase.upload/text
-  [_]
+  [_ _]
   identity)
 
 (defmethod upload-type->parser :metabase.upload/int
-  [_]
-  (partial parse-number (get-number-separators)))
+  [_ {:keys [number-separators]}]
+  (partial parse-as-biginteger number-separators))
 
 (defmethod upload-type->parser :metabase.upload/float
-  [_]
-  (partial parse-number (get-number-separators)))
-
-(defmethod upload-type->parser :metabase.upload/int-pk
-  [_]
-  (partial parse-number (get-number-separators)))
+  [_ {:keys [number-separators]}]
+  (partial parse-number number-separators))
 
 (defmethod upload-type->parser :metabase.upload/auto-incrementing-int-pk
-  [_]
-  (partial parse-number (get-number-separators)))
-
-(defmethod upload-type->parser :metabase.upload/string-pk
-  [_]
-  identity)
+  [_ {:keys [number-separators]}]
+  (partial parse-as-biginteger number-separators))
 
 (defmethod upload-type->parser :metabase.upload/boolean
-  [_]
+  [_ _]
   (comp
    parse-bool
    str/trim))
 
 (defmethod upload-type->parser :metabase.upload/date
-  [_]
+  [_ _]
   (comp
-   parse-date
+   parse-local-date
    str/trim))
 
 (defmethod upload-type->parser :metabase.upload/datetime
-  [_]
+  [_ _]
   (comp
    parse-as-datetime
    str/trim))
 
 (defmethod upload-type->parser :metabase.upload/offset-datetime
-  [_]
+  [_ _]
   (comp
    parse-offset-datetime
    str/trim))

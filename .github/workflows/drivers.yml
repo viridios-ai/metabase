@@ -7,31 +7,12 @@ on:
       - 'release-**'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  workflow_run:
-    workflows: [External Trigger Filter]
-    types: [completed]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  external-filter:
-    # 1. within the organization OR
-    # 2. fork
-    if: |
-      github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository ||
-      github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 3
-    steps:
-      - run: |
-          if ${{ github.event.pull_request.head.repo.full_name == github.repository }}; then
-            echo 'Running Drivers tests within the organization.'
-          elif ${{ github.event.workflow_run.conclusion == 'success' }}; then
-            echo "Running Drivers tests for the external contributor. Thank you!"
-          fi
-
   files-changed:
     name: Check which files changed
     runs-on: ubuntu-22.04
@@ -48,10 +29,8 @@ jobs:
           filters: .github/file-paths.yaml
 
   be-tests-athena-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -68,12 +47,20 @@ jobs:
       with:
         junit-name: 'be-tests-athena-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-bigquery-cloud-sdk-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -92,12 +79,20 @@ jobs:
       with:
         junit-name: 'be-tests-bigquery-cloud-sdk-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-druid-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -117,12 +112,20 @@ jobs:
       with:
         junit-name: 'be-tests-druid-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-googleanalytics-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -135,12 +138,20 @@ jobs:
       with:
         junit-name: 'be-tests-googleanalytics-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-google-related-drivers-classpath-test:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -159,12 +170,20 @@ jobs:
       with:
         junit-name: 'be-google-related-drivers-classpath-test'
         test-args: ':only "[metabase.query-processor-test.expressions-test metabase.driver.google-test metabase.driver.googleanalytics-test]"'
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-mariadb-10-2-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -187,12 +206,20 @@ jobs:
       uses: ./.github/actions/test-driver
       with:
         junit-name: 'be-tests-mariadb-10-2-ee'
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-mariadb-latest-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -215,12 +242,20 @@ jobs:
       uses: ./.github/actions/test-driver
       with:
         junit-name: 'be-tests-mariadb-latest-ee'
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-mongo-4-4-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -240,12 +275,20 @@ jobs:
       with:
         junit-name: 'be-tests-mongo-4-4-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-mongo-4-4-ssl-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -277,12 +320,20 @@ jobs:
         with:
           junit-name: 'be-tests-mongo-4-4-ee'
           test-args: ":exclude-tags '[:mb/once]'"
+      - name: Upload Test Results
+        uses: ./.github/actions/upload-test-results
+        if: always()
+        with:
+          input-path: ./target/junit/
+          output-name: ${{ github.job }}
+          bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+          aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-mongo-5-0-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -302,12 +353,20 @@ jobs:
       with:
         junit-name: 'be-tests-mongo-5-0-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-mongo-5-0-ssl-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -339,12 +398,20 @@ jobs:
       with:
         junit-name: 'be-tests-mongo-5-0-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-mongo-latest-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -367,12 +434,20 @@ jobs:
       with:
         junit-name: 'be-tests-mongo-latest-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-mysql-8-0-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -397,10 +472,8 @@ jobs:
         junit-name: 'be-tests-mysql-8-0-ee'
 
   be-tests-mysql-latest-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -426,7 +499,10 @@ jobs:
       MB_MYSQL_SSL_TEST_PASSWORD: ${{ secrets.MYSQL_RDS_SSL_INSTANCE_PASSWORD }}
     services:
       mysql:
-        image: circleci/mysql:latest
+        image: mysql:latest
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: true
+          MYSQL_DATABASE: circle_test
         ports:
         - "3306:3306"
     steps:
@@ -435,12 +511,20 @@ jobs:
       uses: ./.github/actions/test-driver
       with:
         junit-name: 'be-tests-mysql-latest-ee'
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-oracle-18-4-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -464,12 +548,20 @@ jobs:
       with:
         junit-name: 'be-tests-oracle-18-4-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-oracle-21-3-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -502,12 +594,20 @@ jobs:
       with:
         junit-name: 'be-tests-oracle-21-3-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-postgres-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -536,10 +636,8 @@ jobs:
         junit-name: 'be-tests-postgres-ee'
 
   be-tests-postgres-latest-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -569,12 +667,20 @@ jobs:
       uses: ./.github/actions/test-driver
       with:
         junit-name: 'be-tests-postgres-latest-ee'
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-presto-jdbc-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -621,12 +727,20 @@ jobs:
       with:
         junit-name: 'be-tests-presto-jdbc-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-redshift-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -643,12 +757,20 @@ jobs:
       with:
         junit-name: 'be-tests-redshift-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-snowflake-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -667,12 +789,20 @@ jobs:
       with:
         junit-name: 'be-tests-snowflake-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-sparksql-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -690,12 +820,20 @@ jobs:
       with:
         junit-name: 'be-tests-sparksql-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-sqlite-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -708,12 +846,20 @@ jobs:
       with:
         junit-name: 'be-tests-sqlite-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-sqlserver-2017-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -738,12 +884,20 @@ jobs:
       with:
         junit-name: 'be-tests-sqlserver-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-sqlserver-2022-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -768,12 +922,20 @@ jobs:
       with:
         junit-name: 'be-tests-sqlserver-2022-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}
 
   be-tests-vertica-ee:
-    needs: [files-changed, external-filter]
-    if: |
-      (github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true') &&
-      needs.external-filter.result == 'success'
+    needs: files-changed
+    if: github.event.pull_request.draft == false && needs.files-changed.outputs.backend_all == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
@@ -793,3 +955,13 @@ jobs:
       with:
         junit-name: 'be-tests-vertica-ee'
         test-args: ":exclude-tags '[:mb/once]'"
+    - name: Upload Test Results
+      uses: ./.github/actions/upload-test-results
+      if: always()
+      with:
+        input-path: ./target/junit/
+        output-name: ${{ github.job }}
+        bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+        aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION }}

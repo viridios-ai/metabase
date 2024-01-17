@@ -12,11 +12,20 @@
    [environ.core :as env]
    [java-time.api :as t]
    [mb.hawk.parallel]
+   [metabase.config :as config]
    [metabase.db.query :as mdb.query]
    [metabase.db.util :as mdb.u]
    [metabase.models
-    :refer [Card Collection Dimension Field FieldValues Permissions
-            PermissionsGroup PermissionsGroupMembership Setting Table User]]
+    :refer [Card
+            Dimension
+            Field
+            FieldValues
+            Permissions
+            PermissionsGroup
+            PermissionsGroupMembership
+            Setting
+            Table
+            User]]
    [metabase.models.collection :as collection]
    [metabase.models.interface :as mi]
    [metabase.models.moderation-review :as moderation-review]
@@ -32,9 +41,9 @@
    [metabase.test.fixtures :as fixtures]
    [metabase.test.initialize :as initialize]
    [metabase.test.util.log :as tu.log]
-   [metabase.test.util.random :as tu.random]
    [metabase.util :as u]
    [metabase.util.files :as u.files]
+   [metabase.util.random :as u.random]
    [methodical.core :as methodical]
    [toucan2.core :as t2]
    [toucan2.model :as t2.model]
@@ -104,11 +113,11 @@
               :database_id            (data/id)
               :dataset_query          {}
               :display                :table
-              :name                   (tu.random/random-name)
+              :name                   (u.random/random-name)
               :visualization_settings {}}))
 
    :model/Collection
-   (fn [_] (default-created-at-timestamped {:name (tu.random/random-name)}))
+   (fn [_] (default-created-at-timestamped {:name (u.random/random-name)}))
 
    :model/Action
    (fn [_] {:creator_id (rasta-id)})
@@ -116,7 +125,7 @@
    :model/Dashboard
    (fn [_] (default-timestamped
              {:creator_id (rasta-id)
-              :name       (tu.random/random-name)}))
+              :name       (u.random/random-name)}))
 
    :model/DashboardCard
    (fn [_] (default-timestamped
@@ -131,7 +140,7 @@
    :model/DashboardTab
    (fn [_]
      (default-timestamped
-       {:name     (tu.random/random-name)
+       {:name     (u.random/random-name)
         :position 0}))
 
    :model/Database
@@ -139,18 +148,18 @@
              {:details   {}
               :engine    :h2
               :is_sample false
-              :name      (tu.random/random-name)}))
+              :name      (u.random/random-name)}))
 
    :model/Dimension
    (fn [_] (default-timestamped
-             {:name (tu.random/random-name)
+             {:name (u.random/random-name)
               :type "internal"}))
 
    :model/Field
    (fn [_] (default-timestamped
              {:database_type "VARCHAR"
               :base_type     :type/Text
-              :name          (tu.random/random-name)
+              :name          (u.random/random-name)
               :position      1
               :table_id      (data/id :checkins)}))
 
@@ -170,17 +179,17 @@
    :model/NativeQuerySnippet
    (fn [_] (default-timestamped
              {:creator_id (user-id :crowberto)
-              :name       (tu.random/random-name)
+              :name       (u.random/random-name)
               :content    "1 = 1"}))
 
    :model/PersistedInfo
-   (fn [_] {:question_slug (tu.random/random-name)
-            :query_hash    (tu.random/random-hash)
-            :definition    {:table-name        (tu.random/random-name)
+   (fn [_] {:question_slug (u.random/random-name)
+            :query_hash    (u.random/random-hash)
+            :definition    {:table-name        (u.random/random-name)
                             :field-definitions (repeatedly
                                                  4
-                                                 #(do {:field-name (tu.random/random-name) :base-type "type/Text"}))}
-            :table_name    (tu.random/random-name)
+                                                 #(do {:field-name (u.random/random-name) :base-type "type/Text"}))}
+            :table_name    (u.random/random-name)
             :active        true
             :state         "persisted"
             :refresh_begin (t/zoned-date-time)
@@ -188,12 +197,12 @@
             :creator_id    (rasta-id)})
 
    :model/PermissionsGroup
-   (fn [_] {:name (tu.random/random-name)})
+   (fn [_] {:name (u.random/random-name)})
 
    :model/Pulse
    (fn [_] (default-timestamped
              {:creator_id (rasta-id)
-              :name       (tu.random/random-name)}))
+              :name       (u.random/random-name)}))
 
    :model/PulseCard
    (fn [_] {:position    0
@@ -227,14 +236,14 @@
    (fn [_] (default-timestamped
              {:db_id  (data/id)
               :active true
-              :name   (tu.random/random-name)}))
+              :name   (u.random/random-name)}))
 
    :model/TaskHistory
    (fn [_]
      (let [started (t/zoned-date-time)
            ended   (t/plus started (t/millis 10))]
        {:db_id      (data/id)
-        :task       (tu.random/random-name)
+        :task       (u.random/random-name)
         :started_at started
         :ended_at   ended
         :duration   (.toMillis (t/duration started ended))}))
@@ -258,10 +267,10 @@
         :creator_id   (rasta-id)}))
 
    :model/User
-   (fn [_] {:first_name  (tu.random/random-name)
-            :last_name   (tu.random/random-name)
-            :email       (tu.random/random-email)
-            :password    (tu.random/random-name)
+   (fn [_] {:first_name  (u.random/random-name)
+            :last_name   (u.random/random-name)
+            :email       (u.random/random-email)
+            :password    (u.random/random-name)
             :date_joined (t/zoned-date-time)
             :updated_at  (t/zoned-date-time)})})
 
@@ -635,7 +644,7 @@
   [_]
   nil)
 
-(defmethod with-model-cleanup-additional-conditions Collection
+(defmethod with-model-cleanup-additional-conditions :model/Collection
   [_]
   ;; NEVER delete personal collections for the test users.
   [:or
@@ -643,13 +652,42 @@
    [:not-in :personal_owner_id (set (map (requiring-resolve 'metabase.test.data.users/user->id)
                                          @(requiring-resolve 'metabase.test.data.users/usernames)))]])
 
+(defmethod with-model-cleanup-additional-conditions :model/User
+  [_]
+  ;; Don't delete the internal user
+  [:not= :id config/internal-mb-user-id])
+
+(defmethod with-model-cleanup-additional-conditions :model/Database
+  [_]
+  ;; Don't delete the audit database
+  [:not= :id perms/audit-db-id])
+
+(defmulti with-max-model-id-additional-conditions
+  "Additional conditions applied to the query to find the max ID for a model prior to a test run. This can be used to
+  exclude rows which intentionally use non-sequential IDs, like the internal user."
+  {:arglists '([model])}
+  mi/model)
+
+(defmethod with-max-model-id-additional-conditions :default
+  [_]
+  [:not= :id config/internal-mb-user-id])
+
+(defmethod with-max-model-id-additional-conditions :model/User
+  [_]
+  [:not= :id config/internal-mb-user-id])
+
+(defmethod with-max-model-id-additional-conditions :model/Database
+ [_]
+ [:not= :id perms/audit-db-id])
+
 (defn do-with-model-cleanup [models f]
   {:pre [(sequential? models) (every? mdb.u/toucan-model? models)]}
   (mb.hawk.parallel/assert-test-is-not-parallel "with-model-cleanup")
   (initialize/initialize-if-needed! :db)
   (let [model->old-max-id (into {} (for [model models]
                                      [model (:max-id (t2/select-one [model [(keyword (str "%max." (name (first (t2/primary-keys model)))))
-                                                                            :max-id]]))]))]
+                                                                            :max-id]]
+                                                                    {:where (with-max-model-id-additional-conditions model)}))]))]
     (try
       (testing (str "\n" (pr-str (cons 'with-model-cleanup (map name models))) "\n")
         (f))
@@ -685,7 +723,7 @@
   (testing "Make sure the with-model-cleanup macro actually works as expected"
     (t2.with-temp/with-temp [Card other-card]
       (let [card-count-before (t2/count Card)
-            card-name         (tu.random/random-name)]
+            card-name         (u.random/random-name)]
         (with-model-cleanup [Card]
           (t2/insert! Card (-> other-card (dissoc :id :entity_id) (assoc :name card-name)))
           (testing "Card count should have increased by one"
@@ -921,6 +959,12 @@
            :namespace (name ~collection-namespace))
     (fn [] ~@body)))
 
+(defmacro with-non-admin-groups-no-collection-perms
+  "Temporarily remove perms for the provided collection for all Groups besides the Admin group (which cannot have them
+  removed)."
+  [collection & body]
+  `(do-with-non-admin-groups-no-collection-perms ~collection (fn [] ~@body)))
+
 (defn do-with-all-users-permission
   "Call `f` without arguments in a context where the ''All Users'' group
   is granted the permission specified by `permission-path`.
@@ -930,6 +974,25 @@
   (t2.with-temp/with-temp [Permissions _ {:group_id (:id (perms-group/all-users))
                                           :object permission-path}]
     (f)))
+
+(defn do-with-all-user-data-perms-graph
+  "Implementation for [[with-all-users-data-perms]]"
+  [graph f]
+  (let [all-users-group-id  (u/the-id (perms-group/all-users))
+        current-graph       (get-in (perms/data-perms-graph) [:groups all-users-group-id])]
+    (try
+      (with-model-cleanup [Permissions]
+        (u/ignore-exceptions
+         (@#'perms/update-group-permissions! all-users-group-id graph))
+        (f))
+      (finally
+        (u/ignore-exceptions
+         (@#'perms/update-group-permissions! all-users-group-id current-graph))))))
+
+(defmacro with-all-users-data-perms-graph
+  "Runs `body` with data perms for the All Users group temporarily set to the values in `graph`."
+  [graph & body]
+  `(do-with-all-user-data-perms-graph ~graph (fn [] ~@body)))
 
 (defmacro with-all-users-permission
   "Run `body` with the ''All Users'' group being granted the permission
@@ -1110,7 +1173,7 @@
   {:pre [(or (string? filename) (nil? filename))]}
   (let [filename (if (string? filename)
                    filename
-                   (tu.random/random-name))
+                   (u.random/random-name))
         filename (str (u.files/get-path (System/getProperty "java.io.tmpdir") filename))]
     ;; delete file if it already exists
     (io/delete-file (io/file filename) :silently)

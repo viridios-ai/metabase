@@ -15,6 +15,7 @@
    [metabase.models.interface :as mi]
    [metabase.models.permissions :as perms :refer [Permissions]]
    [metabase.models.serialization :as serdes]
+   [metabase.permissions.util :as perms.u]
    [metabase.public-settings.premium-features :as premium-features]
    [metabase.util :as u]
    [metabase.util.honey-sql-2 :as h2x]
@@ -557,7 +558,7 @@
 ;;; |                                    Recursive Operations: Moving & Archiving                                    |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(mu/defn perms-for-archiving :- [:set perms/PathSchema]
+(mu/defn perms-for-archiving :- [:set perms.u/PathSchema]
   "Return the set of Permissions needed to archive or unarchive a `collection`. Since archiving a Collection is
   *recursive* (i.e., it applies to all the descendant Collections of that Collection), we require write ('curate')
   permissions for the Collection itself and all its descendants, but not for its parent Collection.
@@ -589,7 +590,7 @@
                             (t2/select-pks-set Collection :location [:like (str (children-location collection) "%")])))]
      (perms/collection-readwrite-path collection-or-id))))
 
-(mu/defn perms-for-moving :- [:set perms/PathSchema]
+(mu/defn perms-for-moving :- [:set perms.u/PathSchema]
   "Return the set of Permissions needed to move a `collection`. Like archiving, moving is recursive, so we require
   perms for both the Collection and its descendants; we additionally require permissions for its new parent Collection.
 
@@ -984,10 +985,10 @@
                        (str location id "/"))
                      "/")]
     (-> contents
-        serdes/load-xform-basics
         (dissoc :parent_id)
         (assoc :location loc)
-        (update :personal_owner_id serdes/*import-user*))))
+        (update :personal_owner_id serdes/*import-user*)
+        serdes/load-xform-basics)))
 
 (defmethod serdes/dependencies "Collection"
   [{:keys [parent_id]}]
@@ -997,6 +998,11 @@
 
 (defmethod serdes/generate-path "Collection" [_ coll]
   (serdes/maybe-labeled "Collection" coll :slug))
+
+(defmethod serdes/ascendants "Collection" [_ id]
+  (let [location (t2/select-one-fn :location Collection :id id)]
+    ;; it would work returning just one, but why not return all if it's cheap
+    (set (map vector (repeat "Collection") (location-path->ids location)))))
 
 (defmethod serdes/descendants "Collection" [_model-name id]
   (let [location    (t2/select-one-fn :location Collection :id id)

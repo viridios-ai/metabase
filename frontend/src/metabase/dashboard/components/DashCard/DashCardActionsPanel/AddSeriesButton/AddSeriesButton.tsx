@@ -1,11 +1,11 @@
 import { t } from "ttag";
 
-import { Icon } from "metabase/core/components/Icon";
+import { Icon } from "metabase/ui";
 
 import visualizations from "metabase/visualizations";
 import type { Series } from "metabase-types/api";
 
-import { DashCardActionButton } from "../DashCardActionButton";
+import { DashCardActionButton } from "../DashCardActionButton/DashCardActionButton";
 import {
   ActionButton,
   IconContainer,
@@ -22,7 +22,7 @@ function getSeriesIconName(series: Series) {
   );
 }
 
-function AddSeriesButton({
+export function AddSeriesButton({
   series,
   onClick,
 }: {
@@ -43,5 +43,3 @@ function AddSeriesButton({
     </ActionButton>
   );
 }
-
-export { AddSeriesButton };

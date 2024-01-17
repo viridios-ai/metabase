@@ -3,12 +3,12 @@ import { useState } from "react";
 import { connect } from "react-redux";
 import { t } from "ttag";
 
-import { Icon } from "metabase/core/components/Icon";
+import { Icon } from "metabase/ui";
 import Link from "metabase/core/components/Link";
 import ModalContent from "metabase/components/ModalContent";
 import DashboardPicker from "metabase/containers/DashboardPicker";
 import * as Urls from "metabase/lib/urls";
-import CreateDashboardModal from "metabase/dashboard/containers/CreateDashboardModal";
+import { CreateDashboardModalConnected } from "metabase/dashboard/containers/CreateDashboardModal";
 import { useCollectionQuery } from "metabase/common/hooks";
 import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
 import type { State } from "metabase-types/store";
@@ -91,7 +91,7 @@ const AddToDashSelectDashModal = ({
 
   if (shouldCreateDashboard) {
     return (
-      <CreateDashboardModal
+      <CreateDashboardModalConnected
         filterPersonalCollections={
           isQuestionInPersonalCollection ? "only" : undefined
         }

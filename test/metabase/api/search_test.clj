@@ -12,19 +12,18 @@
             DashboardCard Database Metric PermissionsGroup
             PermissionsGroupMembership Pulse PulseCard QueryAction Segment Table]]
    [metabase.models.collection :as collection]
+   [metabase.models.database :as database]
    [metabase.models.model-index :as model-index]
    [metabase.models.moderation-review :as moderation-review]
    [metabase.models.permissions :as perms]
    [metabase.models.permissions-group :as perms-group]
    [metabase.models.revision :as revision]
    [metabase.public-settings.premium-features :as premium-features]
-   [metabase.public-settings.premium-features-test :as premium-features-test]
    [metabase.search.config :as search.config]
    [metabase.search.scoring :as scoring]
    [metabase.test :as mt]
    [metabase.util :as u]
    [toucan2.core :as t2]
-   [toucan2.execute :as t2.execute]
    [toucan2.tools.with-temp :as t2.with-temp]))
 
 (defn- ordered-subset?
@@ -326,14 +325,14 @@
            :model/Card       {v-model-id :id} {:name (format "%s Verified Model" search-term) :dataset true}
            :model/Collection {_v-coll-id :id} {:name (format "%s Verified Collection" search-term) :authority_level "official"}]
           (testing "when has both :content-verification features"
-            (premium-features-test/with-premium-features #{:content-verification}
+            (mt/with-premium-features #{:content-verification}
               (mt/with-verified-cards [v-card-id v-model-id]
                 (is (= #{"card" "dataset"}
                        (set (mt/user-http-request :crowberto :get 200 "search/models"
                                                   :q search-term
                                                   :verified true)))))))
           (testing "when has :content-verification feature only"
-            (premium-features-test/with-premium-features #{:content-verification}
+            (mt/with-premium-features #{:content-verification}
               (mt/with-verified-cards [v-card-id]
                 (is (= #{"card"}
                        (set (mt/user-http-request :crowberto :get 200 "search/models"
@@ -573,24 +572,107 @@
                      "Fort Worth" "Fort Smith" "Fort Wayne"}
                    (into #{} (comp relevant (map :name)) (search! "fort"))))
 
-            (testing "Sandboxed users do not see indexed entities in search"
-              (with-redefs [premium-features/sandboxed-or-impersonated-user? (constantly true)]
-                (is (= #{}
-                       (into #{} (comp relevant (map :name)) (search! "fort"))))))
-
             (let [normalize (fn [x] (-> x (update :pk_ref mbql.normalize/normalize)))]
               (is (=? {"Rome"   {:pk_ref         (mt/$ids $municipality.id)
                                  :name           "Rome"
                                  :model_id       (:id model)
                                  :model_name     (:name model)
-                                 :model_index_id #hawk/malli :int}
+                                 :model_index_id (mt/malli=? :int)}
                        "Tromsø" {:pk_ref         (mt/$ids $municipality.id)
                                  :name           "Tromsø"
                                  :model_id       (:id model)
                                  :model_name     (:name model)
-                                 :model_index_id #hawk/malli :int}}
+                                 :model_index_id (mt/malli=? :int)}}
                       (into {} (comp relevant (map (juxt :name normalize)))
                             (search! "rom")))))))))))
+
+(deftest indexed-entity-perms-test
+  (mt/dataset airports
+    (let [query (mt/mbql-query municipality)]
+      (mt/with-temp [Collection collection           {:name     "test"
+                                                      :location "/"}
+                     Card       root-model           {:dataset       true
+                                                      :dataset_query query
+                                                      :collection_id nil}
+                     Card       sub-collection-model {:dataset true
+                                                      :dataset_query query
+                                                      :collection_id (u/id collection)}]
+        (let [model-index-1 (model-index/create
+                             (mt/$ids {:model-id   (:id root-model)
+                                       :pk-ref     $municipality.id
+                                       :value-ref  $municipality.name
+                                       :creator-id (mt/user->id :rasta)}))
+              model-index-2 (model-index/create
+                             (mt/$ids {:model-id   (:id sub-collection-model)
+                                       :pk-ref     $municipality.id
+                                       :value-ref  $municipality.name
+                                       :creator-id (mt/user->id :rasta)}))
+              relevant-1    (comp (filter (comp #{(:id root-model)} :model_id))
+                                  (filter (comp #{"indexed-entity"} :model)))
+              relevant-2    (comp (filter (comp #{(:id sub-collection-model)} :model_id))
+                                  (filter (comp #{"indexed-entity"} :model)))
+              search!       (fn search!
+                              ([search-term] (search! search-term :crowberto))
+                              ([search-term user] (:data (make-search-request user [:q search-term]))))
+              normalize     (fn [x] (-> x (update :pk_ref mbql.normalize/normalize)))]
+          (model-index/add-values! model-index-1)
+          (model-index/add-values! model-index-2)
+
+          (testing "Indexed entities returned if a non-admin user has full data perms and collection access"
+            (mt/with-all-users-data-perms-graph {(mt/id) {:data {:schemas :all :native :all}}}
+              (is (=? {"Rome"   {:pk_ref         (mt/$ids $municipality.id)
+                                 :name           "Rome"
+                                 :model_id       (:id root-model)
+                                 :model_name     (:name root-model)
+                                 :model_index_id (mt/malli=? :int)}
+                       "Tromsø" {:pk_ref         (mt/$ids $municipality.id)
+                                 :name           "Tromsø"
+                                 :model_id       (:id root-model)
+                                 :model_name     (:name root-model)
+                                 :model_index_id (mt/malli=? :int)}}
+                      (into {} (comp relevant-1 (map (juxt :name normalize)))
+                            (search! "rom" :rasta))))))
+
+          (testing "Indexed entities are not returned if a user doesn't have full data perms for the DB"
+            (mt/with-all-users-data-perms-graph {(mt/id) {:data {:schemas :none :native :none}}}
+              (is (= #{}
+                     (into #{} (comp relevant-1 (map (juxt :name normalize)))
+                           (search! "rom" :rasta)))))
+
+            (mt/with-all-users-data-perms-graph {(mt/id) {:data {:schemas :all :native :none}}}
+              (is (= #{}
+                     (into #{} (comp relevant-1 (map (juxt :name normalize)))
+                           (search! "rom" :rasta)))))
+
+            (let [[id-1 id-2 id-3 id-4] (map u/the-id (database/tables (mt/db)))]
+              (mt/with-all-users-data-perms-graph {(mt/id) {:data {:schemas {"PUBLIC" {id-1 :all
+                                                                                       id-2 :all
+                                                                                       id-3 :all
+                                                                                       id-4 :none}}}}}
+                (is (= #{}
+                       (into #{} (comp relevant-1 (map (juxt :name normalize)))
+                             (search! "rom" :rasta))))))
+
+            (mt/with-all-users-data-perms-graph {(mt/id) {:data {:schemas :block :native :none}}}
+              (is (= #{}
+                     (into #{} (comp relevant-1 (map (juxt :name normalize)))
+                           (search! "rom" :rasta))))))
+
+          (testing "Indexed entities are not returned if a user doesn't have root collection access"
+            (mt/with-non-admin-groups-no-root-collection-perms
+              (is (= #{}
+                     (into #{} (comp relevant-1 (map (juxt :name normalize)))
+                           (search! "rom" :rasta)))))
+
+            (mt/with-non-admin-groups-no-collection-perms collection
+              (is (= #{}
+                     (into #{} (comp relevant-2 (map (juxt :name normalize)))
+                           (search! "rom" :rasta))))))
+
+          (testing "Sandboxed users do not see indexed entities in search"
+            (with-redefs [premium-features/sandboxed-or-impersonated-user? (constantly true)]
+              (is (= #{}
+                     (into #{} (comp relevant-1 (map :name)) (search! "fort")))))))))))
 
 (deftest archived-results-test
   (testing "Should return unarchived results by default"
@@ -779,41 +861,47 @@
               (is (= nil (search-for-pulses pulse))))))))))
 
 (deftest search-db-call-count-test
-  (t2.with-temp/with-temp
-    [Card      _              {:name "card db count test 1"}
-     Card      _              {:name "card db count test 2"}
-     Card      _              {:name "card db count test 3"}
-     Dashboard _              {:name "dash count test 1"}
-     Dashboard _              {:name "dash count test 2"}
-     Dashboard _              {:name "dash count test 3"}
-     Database  {db-id :id}    {:name "database count test 1"}
-     Database  _              {:name "database count test 2"}
-     Database  _              {:name "database count test 3"}
-     Table     {table-id :id} {:db_id  db-id
-                               :schema nil}
-     Metric    _              {:table_id table-id
-                               :name     "metric count test 1"}
-     Metric    _              {:table_id table-id
-                               :name     "metric count test 1"}
-     Metric    _              {:table_id table-id
-                               :name     "metric count test 2"}
-     Segment   _              {:table_id table-id
-                               :name     "segment count test 1"}
-     Segment   _              {:table_id table-id
-                               :name     "segment count test 2"}
-     Segment   _              {:table_id table-id
-                               :name     "segment count test 3"}]
-    (mt/with-current-user (mt/user->id :crowberto)
-      (t2.execute/with-call-count [call-count]
-        (#'api.search/search {:search-string      "count test"
-                              :archived?          false
-                              :models             search.config/all-models
-                              :current-user-perms #{"/"}
-                              :limit-int          100})
-        ;; the call count number here are expected to change if we change the search api
-        ;; we have this test here just to keep tracks this number to remind us to put effort
-        ;; into keep this number as low as we can
-        (is (= 11 (call-count)))))))
+  (let [search-string (mt/random-name)]
+    (t2.with-temp/with-temp
+      [Card      _              {:name (str "card db 1 " search-string)}
+       Card      _              {:name (str "card db 2 " search-string)}
+       Card      _              {:name (str "card db 3 " search-string)}
+       Dashboard _              {:name (str "dash 1 " search-string)}
+       Dashboard _              {:name (str "dash 2 " search-string)}
+       Dashboard _              {:name (str "dash 3 " search-string)}
+       Database  {db-id :id}    {:name (str "database 1 " search-string)}
+       Database  _              {:name (str "database 2 " search-string)}
+       Database  _              {:name (str "database 3 " search-string)}
+       Table     {table-id :id} {:db_id  db-id
+                                 :schema nil}
+       Metric    _              {:table_id table-id
+                                 :name     (str "metric 1 " search-string)}
+       Metric    _              {:table_id table-id
+                                 :name     (str "metric 1 " search-string)}
+       Metric    _              {:table_id table-id
+                                 :name     (str "metric 2 " search-string)}
+       Segment   _              {:table_id table-id
+                                 :name     (str "segment 1 " search-string)}
+       Segment   _              {:table_id table-id
+                                 :name     (str "segment 2 " search-string)}
+       Segment   _              {:table_id table-id
+                                 :name     (str "segment 3 " search-string)}]
+      (mt/with-current-user (mt/user->id :crowberto)
+        (let [do-search (fn []
+                          (#'api.search/search {:search-string      search-string
+                                                :archived?          false
+                                                :models             search.config/all-models
+                                                :current-user-perms #{"/"}
+                                                :limit-int          100}))]
+          ;; warm it up, in case the DB call depends on the order of test execution and it needs to
+          ;; do some initialization
+          (do-search)
+          (t2/with-call-count [call-count]
+            (do-search)
+            ;; the call count number here are expected to change if we change the search api
+            ;; we have this test here just to keep tracks this number to remind us to put effort
+            ;; into keep this number as low as we can
+            (is (= 9 (call-count)))))))))
 
 (deftest snowplow-new-search-query-event-test
   (testing "Send a snowplow event when a search query is triggered and context is passed"
@@ -1054,7 +1142,7 @@
        :model/Card {_model-id :id}  {:name (format "%s Normal Model" search-term) :dataset true}
        :model/Card {v-model-id :id} {:name (format "%s Verified Model" search-term) :dataset true}]
       (mt/with-verified-cards [v-card-id v-model-id]
-        (premium-features-test/with-premium-features #{:content-verification}
+        (mt/with-premium-features #{:content-verification}
           (testing "Able to filter only verified items"
             (let [resp (mt/user-http-request :crowberto :get 200 "search" :q search-term :verified true)]
               (testing "do not returns duplicated verified cards"
@@ -1087,7 +1175,7 @@
                           (map :model)
                           set))))))
 
-        (premium-features-test/with-premium-features #{:content-verification}
+        (mt/with-premium-features #{:content-verification}
           (testing "Returns verified cards and models only if :content-verification is enabled"
             (let [resp (mt/user-http-request :crowberto :get 200 "search" :q search-term :verified true)]
 
@@ -1102,7 +1190,7 @@
                             set)))))))
 
         (testing "error if doesn't have premium-features"
-          (premium-features-test/with-premium-features #{}
+          (mt/with-premium-features #{}
             (is (= "Content Management or Official Collections is a paid feature not currently available to your instance. Please upgrade to use it. Learn more at metabase.com/upgrade/"
                    (mt/user-http-request :crowberto :get 402 "search" :q search-term :verified true)))))))))
 

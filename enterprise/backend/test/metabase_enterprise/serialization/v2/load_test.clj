@@ -409,6 +409,7 @@
                       :aggregation  [[:sum [:field (:id @field1d) nil]]]}
                      (:definition @metric1d))))))))))
 
+#_{:clj-kondo/ignore [:metabase/i-like-making-cams-eyes-bleed-with-horrifically-long-tests]}
 (deftest dashboard-card-test
   ;; DashboardCard.parameter_mappings and Card.parameter_mappings are JSON-encoded lists of parameter maps, which
   ;; contain field IDs - these need to be converted to a portable form and read back in.
@@ -422,6 +423,7 @@
           table1s    (atom nil)
           field1s    (atom nil)
           field2s    (atom nil)
+          field3s    (atom nil)
           dash1s     (atom nil)
           dash2s     (atom nil)
           card1s     (atom nil)
@@ -448,6 +450,7 @@
             (reset! table1s  (ts/create! Table :name "orders" :db_id (:id @db1s)))
             (reset! field1s  (ts/create! Field :name "subtotal" :table_id (:id @table1s)))
             (reset! field2s  (ts/create! Field :name "invoice" :table_id (:id @table1s)))
+            (reset! field3s  (ts/create! Field :name "discount" :table_id (:id @table1s)))
             (reset! user1s   (ts/create! User  :first_name "Tom" :last_name "Scholz" :email "tom@bost.on"))
             (reset! dash1s   (ts/create! Dashboard :name "My Dashboard" :collection_id (:id @coll1s) :creator_id (:id @user1s)))
             (reset! dash2s   (ts/create! Dashboard :name "Linked dashboard" :collection_id (:id @coll1s) :creator_id (:id @user1s)))
@@ -494,7 +497,16 @@
                                                  :parameterMapping
                                                  {mapping-id {:id     mapping-id
                                                               :source {:type "column" :id "Category_ID" :name "Category ID"}
-                                                              :target {:type "dimension" :id mapping-id :dimension mapping-dimension}}}}}}
+                                                              :target {:type "dimension" :id mapping-id :dimension mapping-dimension}}}}}
+                                               (str "[\"ref\",[\"field\"," (:id @field3s) ",null]]")
+                                               {:click_behavior
+                                                {:type     "link"
+                                                 :linkType "question"
+                                                 :targetId (:id @card1s)
+                                                 :parameterMapping
+                                                 {"qweqwe" {:id     "qweqwe"
+                                                            :source {:id "DISCOUNT" :name "Discount" :type "column"}
+                                                            :target {:id "amount_between" :type "variable"}}}}}}
                                               :click_behavior     {:type     "link"
                                                                    :linkType "question"
                                                                    :targetId (:id @card1s)}}
@@ -556,7 +568,17 @@
                                                   {dimension-id
                                                    {:id     dimension-id
                                                     :source {:type "column" :id "Category_ID" :name "Category ID"}
-                                                    :target {:type "dimension" :id dimension-id :dimension dimension}}}}))]
+                                                    :target {:type "dimension" :id dimension-id :dimension dimension}}}})
+                                       (assoc-in [:column_settings
+                                                  "[\"ref\",[\"field\",[\"my-db\",null,\"orders\",\"discount\"],null]]"
+                                                  :click_behavior]
+                                                 {:type "link"
+                                                  :linkType "question"
+                                                  :targetId (:entity_id @card1s)
+                                                  :parameterMapping
+                                                  {"qweqwe" {:id "qweqwe"
+                                                             :source {:id "DISCOUNT" :name "Discount" :type "column"}
+                                                             :target {:id "amount_between" :type "variable"}}}}))]
                   (is (= exp-card
                          (:visualization_settings card)))
                   (is (= exp-dashcard
@@ -955,7 +977,7 @@
                                                                                 :type :snippet,
                                                                                 :snippet-name "filtered data",
                                                                                 :snippet-id (:id @snippet1s)}}}}))
-        (ts/create! User :first_name "Geddy" :last_name "Lee"     :email "glee@rush.yyz")
+        (ts/create! User :first_name "Geddy" :last_name "Lee" :email "glee@rush.yyz")
 
         (testing "on extraction"
           (reset! extracted (serdes/extract-one "Card" {} @card1s))
@@ -973,6 +995,40 @@
                        :template-tags
                        (get "snippet: things")
                        :snippet-id)))))))))
+
+(deftest snippet-with-unique-name
+  (testing "Snippets with the same name should be replaced/removed on deserialization"
+    (mt/with-empty-h2-app-db
+      (let [unique-name "some snippet"
+            snippet     (ts/create! NativeQuerySnippet :name unique-name)
+            id1         (u/generate-nano-id)
+            id2         (u/generate-nano-id)
+            load!       #(serdes.load/load-metabase!
+                          (ingestion-in-memory [(serdes/extract-one "NativeQuerySnippet" {} %)]))]
+
+        (testing "setup is correct"
+          (is (= (:entity_id snippet)
+                 (t2/select-one-fn :entity_id NativeQuerySnippet :name unique-name))))
+
+        (testing "loading snippet with same name will get it renamed"
+          (load! (assoc snippet :entity_id id1))
+          (testing "old snippet is in place"
+            (is (= (:entity_id snippet)
+                   (t2/select-one-fn :entity_id NativeQuerySnippet :name unique-name))))
+          (testing "new one got new name"
+            (is (= (str unique-name " (copy)")
+                   (t2/select-one-fn :name NativeQuerySnippet :entity_id id1)))))
+
+        (testing "can handle multiple name conflicts"
+          (load! (assoc snippet :entity_id id2))
+          (is (= (str unique-name " (copy) (copy)")
+                 (t2/select-one-fn :name NativeQuerySnippet :entity_id id2))))
+
+        (testing "will still update original one"
+          (load! (assoc snippet :content "11 = 11"))
+          (is (=? {:name unique-name
+                   :content "11 = 11"}
+                  (t2/select-one NativeQuerySnippet :entity_id (:entity_id snippet)))))))))
 
 (deftest load-action-test
   (let [serialized (atom nil)
@@ -1056,3 +1112,86 @@
                    (get-in @dash1d [:tabs 0 :entity_id])))
             (is (not= (:entity_id @tab1s)
                       (:entity_id @tab2d)))))))))
+
+(deftest dashcard-series-test
+  (ts/with-source-and-dest-dbs
+    (testing "Dashcard series are updated and deleted correctly"
+     (ts/with-source-db
+       (let [dash1s        (ts/create! :model/Dashboard :name "My Dashboard")
+             tab1s         (ts/create! :model/DashboardTab :name "Tab 1" :dashboard_id (:id dash1s))
+             card1s        (ts/create! Card :name "The Card")
+             series-card1s (ts/create! Card :name "The Series Card 1")
+             series-card2s (ts/create! Card :name "The Series Card 2")
+             series-card3s (ts/create! Card :name "The Series Card 3")
+             dashcard1s    (ts/create! :model/DashboardCard :card_id (:id card1s) :dashboard_id (:id dash1s) :dashboard_tab_id (:id tab1s))
+             series1s      (ts/create! :model/DashboardCardSeries :dashboardcard_id (:id dashcard1s) :card_id (:id series-card1s) :position 0)
+             series2s      (ts/create! :model/DashboardCardSeries :dashboardcard_id (:id dashcard1s) :card_id (:id series-card2s) :position 1)
+             series3s      (ts/create! :model/DashboardCardSeries :dashboardcard_id (:id dashcard1s) :card_id (:id series-card3s) :position 2)
+             extract1      (into [] (serdes.extract/extract {}))]
+         (ts/with-dest-db
+           (serdes.load/load-metabase! (ingestion-in-memory extract1))
+           (ts/with-source-db
+             ;; delete the 1st series and update the 3rd series to have position 0, and the 2nd series to have position 1
+             (t2/delete! :model/DashboardCardSeries (:id series1s))
+             (t2/update! :model/DashboardCardSeries (:id series3s) {:position 0})
+             (t2/update! :model/DashboardCardSeries (:id series2s) {:position 1})
+             (let [extract2 (into [] (serdes.extract/extract {}))]
+               (ts/with-dest-db
+                 (let [series-card2d        (t2/select-one :model/Card :entity_id (:entity_id series-card2s))
+                       series-card3d        (t2/select-one :model/Card :entity_id (:entity_id series-card3s))
+                       ;; we deleted the card that corresponds to `series1s`, so a shortcut is to get the one with position=0
+                       series-to-be-deleted (t2/select-one :model/DashboardCardSeries :position 0)]
+                   (testing "Sense check: there are 3 series for the dashboard card initially"
+                     (is (= 3
+                            (t2/count :model/DashboardCardSeries :dashboardcard_id (:dashboardcard_id series-to-be-deleted)))))
+                   (serdes.load/load-metabase! (ingestion-in-memory extract2))
+                   (let [dash1d (-> (t2/select-one :model/Dashboard :name "My Dashboard")
+                                    (t2/hydrate [:dashcards :series]))]
+                     (testing "Dashboard cards have the same entity ID"
+                       (is (= (:entity_id dashcard1s)
+                              (get-in dash1d [:dashcards 0 :entity_id]))))
+                     (testing "The dashboard's series is updated"
+                       (is (=? [{:id (:id series-card3d)}
+                                {:id (:id series-card2d)}]
+                               (get-in dash1d [:dashcards 0 :series]))))
+                     (testing "Dashboard card series are correctly updated/deleted in the database"
+                       (is (=? [{:position 0
+                                 :card_id  (:id series-card3d)}
+                                {:position 1
+                                 :card_id  (:id series-card2d)}]
+                               (->> (t2/select :model/DashboardCardSeries :dashboardcard_id (:dashboardcard_id series-to-be-deleted))
+                                    (sort-by :position))))))))))))))))
+
+(deftest extraneous-keys-test
+  (let [serialized (atom nil)
+        eid (u/generate-nano-id)]
+    (ts/with-source-and-dest-dbs
+      (testing "Sprinkle the source database with a variety of different models"
+        (ts/with-source-db
+          (let [db         (ts/create! Database :name "my-db")
+                card       (ts/create! Card
+                                 :name "the query"
+                                 :query_type :native
+                                 :dataset true
+                                 :database_id (:id db)
+                                 :dataset_query {:database (:id db)
+                                                 :native   {:type   :native
+                                                            :native {:query "wow"}}})
+                parent     (ts/create! Collection :name "Parent Collection" :location "/")
+                _child     (ts/create! Collection
+                                       :name "Child Collection"
+                                       :location (format "/%d/" (:id parent)))
+                _action-id (action/insert! {:entity_id     eid
+                                            :name          "the action"
+                                            :model_id      (:id card)
+                                            :type          :query
+                                            :dataset_query "wow"
+                                            :database_id   (:id db)})]
+            (reset! serialized
+                    (->> (serdes.extract/extract {})
+                         ;; add an extra key to *every serialized model*
+                         (map #(assoc % :my-extraneous-keeeeeey "foobar!!!!"))
+                         (into []))))))
+      (testing "The extraneous keys do not interfere with loading"
+        (ts/with-dest-db
+          (is (serdes.load/load-metabase! (ingestion-in-memory @serialized))))))))

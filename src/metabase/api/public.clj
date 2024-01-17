@@ -16,11 +16,11 @@
    [metabase.api.field :as api.field]
    [metabase.async.util :as async.u]
    [metabase.db.util :as mdb.u]
+   [metabase.events :as events]
    [metabase.mbql.util :as mbql.u]
    [metabase.models.action :as action]
    [metabase.models.card :as card :refer [Card]]
    [metabase.models.dashboard :refer [Dashboard]]
-   [metabase.models.dashboard-card :as dashboard-card]
    [metabase.models.dimension :refer [Dimension]]
    [metabase.models.field :refer [Field]]
    [metabase.models.interface :as mi]
@@ -251,7 +251,9 @@
   [uuid]
   {uuid ms/UUIDString}
   (validation/check-public-sharing-enabled)
-  (dashboard-with-uuid uuid))
+  (u/prog1 (dashboard-with-uuid uuid)
+           (events/publish-event! :event/dashboard-read {:user-id api/*current-user-id*
+                                                         :object  <>})))
 
 ;; TODO -- this should probably have a name like `run-query-for-dashcard...` so it matches up with
 ;; [[run-query-for-card-with-id-async]]
@@ -310,7 +312,7 @@
   (validation/check-public-sharing-enabled)
   (api/check-404 (t2/select-one-pk Dashboard :public_uuid uuid :archived false))
   (actions.execution/fetch-values
-   (api/check-404 (dashboard-card/dashcard->action dashcard-id))
+   (api/check-404 (action/dashcard->action dashcard-id))
    (json/parse-string parameters)))
 
 (def ^:private dashcard-execution-throttle (throttle/make-throttler :dashcard-id :attempts-threshold 5000))

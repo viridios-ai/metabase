@@ -10,6 +10,7 @@
    [metabase.models :refer [Card Collection Dashboard DashboardCard]]
    [metabase.models.collection :as collection]
    [metabase.models.serialization :as serdes]
+   [metabase.util :as u]
    [metabase.util.log :as log]
    [toucan2.core :as t2]))
 
@@ -43,11 +44,15 @@
 
 (defn- collection-set-for-user
   "Returns a set of collection IDs to export for the provided user, if any.
-   If user-id is nil, do not include any personally-owned collections."
+   If user-id is nil, do not include any personally-owned collections.
+
+  Does not export ee-only analytics collections."
   [user-id]
   (let [roots (t2/select Collection {:where [:and [:= :location "/"]
                                                   [:or [:= :personal_owner_id nil]
-                                                       [:= :personal_owner_id user-id]]]})]
+                                                       [:= :personal_owner_id user-id]]
+                                                  [:or [:= :namespace nil]
+                                                       [:!= :namespace "analytics"]]]})]
     ;; start with the special "nil" root collection ID
     (-> #{nil}
         (into (map :id) roots)
@@ -60,18 +65,6 @@
   (log/tracef "Extracting Metabase with options: %s" (pr-str opts))
   (let [extract-opts (assoc opts :collection-set (collection-set-for-user user-id))]
     (eduction (map #(serdes/extract-all % extract-opts)) cat (model-set opts))))
-
-;; TODO Properly support "continue" - it should be contagious. Eg. a Dashboard with an illegal Card gets excluded too.
-(defn- descendants-closure [targets]
-  (loop [to-chase (set targets)
-         chased   #{}]
-    (let [[m i :as item] (first to-chase)
-          desc           (serdes/descendants m i)
-          chased         (conj chased item)
-          to-chase       (set/union (disj to-chase item) (set/difference desc chased))]
-      (if (empty? to-chase)
-        chased
-        (recur to-chase chased)))))
 
 (defn- escape-analysis
   "Given a target seq, explore the contents of any collections looking for \"leaks\". For example, a
@@ -169,10 +162,14 @@ Eg. if Dashboard B includes a Card A that is derived from a
     ;; If that is non-nil, emit the report.
     (escape-report analysis)
     ;; If it's nil, there are no errors, and we can proceed to do the dump.
-    (let [closure     (descendants-closure targets)
+    ;; TODO This is not handled at all, but we should be able to exclude illegal data - and it should be
+    ;; contagious. Eg. a Dashboard with an illegal Card gets excluded too.
+    (let [nodes       (set/union
+                       (u/traverse targets #(serdes/ascendants (first %) (second %)))
+                       (u/traverse targets #(serdes/descendants (first %) (second %))))
           models      (model-set opts)
           ;; filter the selected models based on user options
-          by-model    (-> (group-by first closure)
+          by-model    (-> (group-by first nodes)
                           (select-keys models)
                           (update-vals #(set (map second %))))
           extract-ids (fn [[model ids]]

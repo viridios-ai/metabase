@@ -1,40 +1,48 @@
+name: Alerts and subscriptions created last week
 description: null
+entity_id: ybsNZp-876qEMoA1U51dc
+created_at: '2023-06-14T19:55:26.986705Z'
+creator_id: internal@metabase.com
+display: smartscalar
 archived: false
+collection_id: vG58R8k-QddHWA7_47umn
+collection_preview: true
 collection_position: null
+query_type: query
+dataset: false
+cache_ttl: null
+database_id: Internal Metabase Database
 table_id:
 - Internal Metabase Database
 - public
-- v_alerts_subscriptions
-result_metadata: null
-database_id: Internal Metabase Database
+- v_subscriptions
 enable_embedding: false
-collection_id: vG58R8k-QddHWA7_47umn
-query_type: query
-name: Alerts and subscriptions created last week
-creator_id: internal@metabase.com
-made_public_by_id: null
 embedding_params: null
-cache_ttl: null
+made_public_by_id: null
+public_uuid: null
+parameters: []
+parameter_mappings: []
 dataset_query:
   database: Internal Metabase Database
-  type: query
   query:
     aggregation:
     - - count
     breakout:
     - - field
-      - created_at
+      - - Internal Metabase Database
+        - public
+        - v_subscriptions
+        - created_at
       - base-type: type/DateTimeWithLocalTZ
         temporal-unit: week
     joins:
-    - alias: Question 34
-      fields: all
+    - alias: Group Members - Creator
       condition:
       - =
       - - field
         - - Internal Metabase Database
           - public
-          - v_alerts_subscriptions
+          - v_subscriptions
           - creator_id
         - base-type: type/Integer
       - - field
@@ -43,47 +51,21 @@ dataset_query:
           - v_group_members
           - user_id
         - base-type: type/Integer
-          join-alias: Question 34
+          join-alias: Group Members - Creator
       source-table: lTp-ATFsCUFEr9I0fMEaO
+      strategy: left-join
     source-table: 5ojUtU9iE-DCggHdFPIll
-    filter:
-    - and
-    - - =
-      - - field
-        - - Internal Metabase Database
-          - public
-          - v_group_members
-          - group_name
-        - base-type: type/Text
-          join-alias: Question 34
-      - All Users
-    - - time-interval
-      - - field
-        - - Internal Metabase Database
-          - public
-          - v_alerts_subscriptions
-          - created_at
-        - base-type: type/DateTimeWithLocalTZ
-      - -2
-      - week
-      - include-current: false
-parameter_mappings: []
-serdes/meta:
-- model: Card
-  id: ybsNZp-876qEMoA1U51dc
-  label: alerts_and_subscriptions_created_last_week
-display: smartscalar
-entity_id: ybsNZp-876qEMoA1U51dc
-collection_preview: true
+  type: query
+result_metadata: null
 visualization_settings:
+  column_settings: null
   graph.dimensions:
   - created_at
   - group_name
   graph.metrics:
   - count
-  column_settings: null
+serdes/meta:
+- id: ybsNZp-876qEMoA1U51dc
+  label: alerts_and_subscriptions_created_last_week
+  model: Card
 metabase_version: null
-parameters: []
-dataset: false
-created_at: '2023-06-14T19:55:26.986705Z'
-public_uuid: null
