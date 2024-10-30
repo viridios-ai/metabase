@@ -48,7 +48,7 @@ describe("AdminPeopleApp", () => {
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute(
         "href",
-        expect.stringMatching(/^https:\/\/www.metabase.com\/upgrade/),
+        expect.stringMatching(/^https:\/\/www\.metabase\.com\/upgrade/),
       );
     });
     it("should not be visible with less than 50 users", () => {
